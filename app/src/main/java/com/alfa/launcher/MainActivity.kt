@@ -223,6 +223,7 @@ class MainActivity : Activity() {
 
         applyAccent()
         applyBackground()
+        applySpin()
         loadApps()
     }
 
@@ -412,7 +413,8 @@ class MainActivity : Activity() {
         }
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
-            "${allApps.size} APPS  ·  SWIPE ↔ TO ORBIT  ·  TAP CENTRE TO CLOSE"
+            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  DRAG TO SPIN  ·  ‹ › PAGES"
+            else "${allApps.size} APPS  ·  SWIPE ↔ FOR PAGES"
         } else {
             "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"
         }
@@ -517,6 +519,10 @@ class MainActivity : Activity() {
         IconStyler.STYLES.forEachIndexed { i, (id, name) ->
             iconSub.add(0, 200 + i, i, if (id == iconStyle) "●  $name" else "○  $name")
         }
+        val spinOn = prefs.getBoolean("spin", true)
+        val driftOn = prefs.getBoolean("drift", false)
+        menu.menu.add(0, 9, 2, if (spinOn) "Orbit spin: ON  (tap to turn off)" else "Orbit spin: OFF  (tap to turn on)")
+        menu.menu.add(0, 10, 2, if (driftOn) "Idle drift: ON" else "Idle drift: OFF")
         menu.menu.add(0, 4, 3, "IT tools")
         menu.menu.add(0, 7, 4, "Check for updates")
         menu.menu.add(0, 5, 5, "Default home app")
@@ -535,6 +541,12 @@ class MainActivity : Activity() {
                 5 -> startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
                 6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
                 7 -> openTool(ToolsActivity.TOOL_UPDATE)
+                9 -> {
+                    prefs.edit().putBoolean("spin", !spinOn).apply()
+                    applySpin()
+                    toast(if (!spinOn) "Spin on: drag around the orbit" else "Spin off")
+                }
+                10 -> { prefs.edit().putBoolean("drift", !driftOn).apply(); applySpin() }
                 in 100 until 100 + ACCENTS.size -> {
                     accent = Color.parseColor(ACCENTS[item.itemId - 100].second)
                     prefs.edit().putInt("accent", accent).apply()
@@ -545,6 +557,14 @@ class MainActivity : Activity() {
             true
         }
         menu.show()
+    }
+
+    private fun applySpin() {
+        val on = prefs.getBoolean("spin", true)
+        orbit.spinEnabled = on
+        galaxyView.spinEnabled = on
+        orbit.drift = prefs.getBoolean("drift", false)
+        filterApps(false) // refresh the hint line
     }
 
     private fun applyBackground() {

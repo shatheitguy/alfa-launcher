@@ -88,6 +88,13 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         }
     }
 
+    /** Finger spin with momentum; when disabled, horizontal swipes change page instead. */
+    val spinner = Spinner(this) { requestLayout(); invalidate() }
+    var spinEnabled: Boolean
+        get() = spinner.enabled
+        set(v) { spinner.enabled = v; if (!v) spinner.stop() }
+    private var spinTracking = false
+
     init {
         setWillNotDraw(false)
         clipChildren = false
@@ -261,7 +268,9 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             val offset = if (r % 2 == 0) 0.0 else 0.5
             for (k in 0 until n) {
                 val slot = slots[idx++]
-                val a = Math.toRadians(-90.0 + (k + offset) * 360.0 / n + spin * dir)
+                // outer rings turn a little faster than inner ones for a parallax feel
+                val user = spinner.angle * (0.8f + 0.1f * r)
+                val a = Math.toRadians(-90.0 + (k + offset) * 360.0 / n + spin * dir + user)
                 val x = (cx + radii[r] * cos(a)).toInt() - itemW / 2
                 // centre the icon (not the label) on the ring
                 val y = (cy + radii[r] * sin(a)).toInt() - iconPx / 2
@@ -293,7 +302,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
 
         // outer rotating ticks
         canvas.save()
-        canvas.rotate(phase, cx, cy)
+        canvas.rotate(phase + spinner.angle, cx, cy)
         for (i in 0 until 120) {
             val major = i % 10 == 0
             stroke.color = if (major) alpha(accent, 220) else Color.argb(45, 255, 255, 255)
@@ -328,7 +337,19 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
 
     // ---------- horizontal swipe = page ----------
 
+    private fun overHub(x: Float, y: Float) = kotlin.math.hypot(x - cx, y - cy) < hubR
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (spinner.enabled) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    spinTracking = !overHub(ev.x, ev.y)
+                    if (spinTracking) spinner.onDown(ev, cx, cy)
+                }
+                MotionEvent.ACTION_MOVE -> if (spinTracking) return spinner.checkStart(ev, cx, cy)
+            }
+            return false
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y; swiping = false }
             MotionEvent.ACTION_MOVE -> {
@@ -343,6 +364,23 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        if (spinner.enabled) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    spinTracking = true
+                    spinner.onDown(ev, cx, cy)
+                }
+                MotionEvent.ACTION_MOVE -> if (spinTracking) {
+                    spinner.checkStart(ev, cx, cy)
+                    spinner.onMove(ev, cx, cy)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (spinTracking) spinner.onUp()
+                    spinTracking = false
+                }
+            }
+            return true
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y; swiping = false }
             MotionEvent.ACTION_MOVE -> {
@@ -369,6 +407,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private fun stop() {
         running = false
         removeCallbacks(frame)
+        spinner.stop()
     }
 
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
