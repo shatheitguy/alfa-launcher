@@ -57,5 +57,6 @@ jobs:
           files: alfa-launcher.apk
           make_latest: true
           body: |
-            Futuristic terminal-style Android launcher.
-            Install `alfa-launcher.apk`, open it, then type `home` in the prompt to set it as your default launcher.
+            ${{ github.event.head_commit.message }}
+
+            Install `alfa-launcher.apk`, or update from inside the launcher: IT Tools → App update.

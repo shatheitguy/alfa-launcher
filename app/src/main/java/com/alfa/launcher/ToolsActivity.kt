@@ -63,6 +63,7 @@ class ToolsActivity : Activity() {
         const val TOOL_HASH = "hash"
         const val TOOL_PASSWORD = "password"
         const val TOOL_SHORTCUTS = "shortcuts"
+        const val TOOL_UPDATE = "update"
 
         private val SERVICES = mapOf(
             20 to "ftp-data", 21 to "ftp", 22 to "ssh", 23 to "telnet", 25 to "smtp", 53 to "dns",
@@ -88,7 +89,10 @@ class ToolsActivity : Activity() {
         Tool(TOOL_HASH, "Hash / Base64", "MD5, SHA, CRC32, Base64"),
         Tool(TOOL_PASSWORD, "Password gen", "Strong random passwords"),
         Tool(TOOL_SHORTCUTS, "System panels", "Jump straight to settings"),
+        Tool(TOOL_UPDATE, "App update", "Get the latest ALFA build"),
     )
+
+    private var pendingApk: File? = null
 
     private val main = Handler(Looper.getMainLooper())
     private val pool = Executors.newCachedThreadPool()
@@ -311,7 +315,146 @@ class ToolsActivity : Activity() {
             TOOL_HASH -> hashTool()
             TOOL_PASSWORD -> passwordTool()
             TOOL_SHORTCUTS -> shortcutsTool()
+            TOOL_UPDATE -> updateTool()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Returning from "allow install unknown apps": continue the install.
+        val apk = pendingApk
+        if (apk != null && current == TOOL_UPDATE && Build.VERSION.SDK_INT >= 26 && packageManager.canRequestPackageInstalls()) {
+            pendingApk = null
+            Updater.install(this, apk)
+        }
+    }
+
+    // ---------- self update ----------
+
+    private fun updateTool() {
+        val prefs = getSharedPreferences("alfa", MODE_PRIVATE)
+        val installedCode = Updater.currentCode(this)
+        val info = card()
+        val status = tv("checking GitHub…", 12f, Color.argb(220, 255, 255, 255), mono = true).apply {
+            setLineSpacing(dp(3).toFloat(), 1f)
+        }
+        info.addView(tv("INSTALLED   v${Updater.currentName(this)}  (build $installedCode)", 12f, white, mono = true))
+        info.addView(status, lp(8))
+        add(info, 14)
+
+        val progress = add(tv("", 11f, accent, mono = true), 12)
+        var release: Updater.Release? = null
+        var busy = false
+
+        lateinit var action: TextView
+        lateinit var check: () -> Unit
+
+        fun setAction(label: String, enabled: Boolean) {
+            action.text = label
+            action.isEnabled = enabled
+            action.alpha = if (enabled) 1f else 0.4f
+        }
+
+        action = button("Download & install") {
+            val rel = release ?: return@button
+            if (busy) return@button
+            busy = true
+            cancelled = false
+            setAction("Downloading…", false)
+            bg {
+                try {
+                    val file = Updater.download(this, rel, { done, total ->
+                        ui {
+                            progress.text = if (total > 0) {
+                                String.format(Locale.US, "%s  %.1f / %.1f MB  %d%%", bar(done, total),
+                                    done / 1048576.0, total / 1048576.0, (done * 100 / total).toInt())
+                            } else String.format(Locale.US, "%.1f MB", done / 1048576.0)
+                        }
+                    }, { cancelled })
+                    ui {
+                        busy = false
+                        setAction("Install ${rel.tag}", true)
+                        if (!Updater.install(this, file)) {
+                            pendingApk = file
+                            toast("Allow ALFA to install apps, then come back")
+                        }
+                    }
+                } catch (e: Exception) {
+                    ui {
+                        busy = false
+                        progress.text = "error: ${e.message}"
+                        setAction("Retry download", true)
+                    }
+                }
+            }
+        }
+
+        check = {
+            setAction("Checking…", false)
+            status.text = "checking GitHub…"
+            bg {
+                try {
+                    val rel = Updater.fetchLatest()
+                    Updater.remember(this, rel)
+                    ui {
+                        release = rel
+                        val newer = rel.code > installedCode
+                        status.text = buildString {
+                            append("LATEST      ${rel.tag}  (build ${rel.code})\n")
+                            append("SIZE        ").append(String.format(Locale.US, "%.1f MB", rel.size / 1048576.0)).append('\n')
+                            append("STATUS      ").append(if (newer) "update available" else "up to date")
+                            if (rel.notes.isNotEmpty()) append("\n\n").append(rel.notes)
+                        }
+                        if (newer) setAction("Download & install ${rel.tag}", true)
+                        else setAction("Up to date", false)
+                    }
+                } catch (e: Exception) {
+                    ui {
+                        status.text = "check failed: ${e.message}"
+                        setAction("Download & install", false)
+                    }
+                }
+            }
+        }
+
+        row(action, top = 4)
+        row(
+            button("Check again", primary = false) { if (!busy) check() },
+            button("Reinstall latest", primary = false) {
+                val rel = release
+                if (rel == null || busy) return@button
+                release = rel
+                setAction("Download & install ${rel.tag}", true)
+                action.performClick()
+            },
+            top = 8,
+        )
+
+        val auto = button("", primary = false) {}
+        fun paintAuto() {
+            val on = prefs.getBoolean("auto_update", true)
+            auto.text = if (on) "Auto-check: ON" else "Auto-check: OFF"
+            auto.backgroundTintList = ColorStateList.valueOf(if (on) accent else Color.argb(38, 255, 255, 255))
+            auto.setTextColor(if (on) Color.BLACK else white)
+        }
+        auto.setOnClickListener {
+            prefs.edit().putBoolean("auto_update", !prefs.getBoolean("auto_update", true)).apply()
+            paintAuto()
+        }
+        paintAuto()
+        row(auto, button("Release page", primary = false) {
+            startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/${Updater.REPO}/releases")))
+        }, top = 8)
+
+        add(tv("Updates come from github.com/${Updater.REPO}. They are signed with the same key, so your pins, dock and settings are kept.",
+            11f, dimmer), 16)
+
+        check()
+    }
+
+    private fun bar(done: Long, total: Long, n: Int = 16): String {
+        val f = ((done * n) / total.coerceAtLeast(1)).toInt().coerceIn(0, n)
+        return "█".repeat(f) + "░".repeat(n - f)
     }
 
     // ---------- network ----------

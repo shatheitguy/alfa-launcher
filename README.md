@@ -33,6 +33,15 @@ Every push to `main` is built by GitHub Actions and published under [Releases](.
 | Password gen | secure random passwords with entropy estimate |
 | System panels | one-tap jumps to Wi-Fi, VPN, developer options, default apps, usage access and more |
 
+## Updating
+
+ALFA updates itself from this repo's Releases:
+
+- It checks automatically every 12 h, and an **▲ UPDATE AVAILABLE** chip appears on the home screen when a new build exists.
+- You can also check by hand: long-press the home screen → **Check for updates**, or IT Tools → **App update**.
+- The APK downloads in the app and opens the Android installer. The first time, Android asks you to allow ALFA to install apps.
+- Your orbit, dock, accent and other settings are kept.
+
 ## Install
 
 1. Download the APK on your phone and allow "Install unknown apps".
