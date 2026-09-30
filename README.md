@@ -15,6 +15,7 @@ Every push to `main` is built by GitHub Actions and published under [Releases](.
 - Clock, date, device model, Android version and uptime
 - Network readout: connection type and local IP (tap for full network info)
 - **Tap the orbit centre** to open **All Apps orbit**: every app on three spinning rings (6 / 12 / 18 per page). Swipe left/right to rotate to the next page, and search to filter. The hub shows the letter range and page.
+- **Spin the orbit**: drag around the ring on the home dial or in All Apps and the apps rotate with your finger. Flick for momentum. Long-press the home screen to turn **Orbit spin** on or off, or enable **Idle drift** (a slow automatic rotation).
 - Dock (5 apps). **Swipe down** opens notifications, **long-press** empty space opens settings
 - Long-press any app to add/remove it from the orbit or dock, see app info, or uninstall
 - **Icon styles**:

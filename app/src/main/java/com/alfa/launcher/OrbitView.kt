@@ -61,10 +61,18 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         override fun run() {
             if (!running) return
             phase = (phase + 0.25f) % 360f
-            invalidate()
+            if (drift && !spinner.dragging) spinner.add(0.15f) else invalidate()
             postDelayed(this, 40)
         }
     }
+
+    /** Finger spin with momentum. */
+    val spinner = Spinner(this) { requestLayout(); invalidate() }
+    /** Slow automatic rotation of the app ring while idle. */
+    var drift = false
+    var spinEnabled: Boolean
+        get() = spinner.enabled
+        set(v) { spinner.enabled = v; if (!v) spinner.stop() }
 
     // geometry (computed in onLayout)
     private var cx = 0f
@@ -153,7 +161,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         val n = icons.size
         icons.forEachIndexed { i, v ->
             // offset by half a step so the 3 and 9 o'clock gauges stay clear
-            val a = Math.toRadians(-90.0 + (i + 0.5) * 360.0 / n)
+            val a = Math.toRadians(-90.0 + (i + 0.5) * 360.0 / n + spinner.angle)
             val x = (cx + orbitR * cos(a)).toInt() - iconSize / 2
             val y = (cy + orbitR * sin(a)).toInt() - iconSize / 2
             v.layout(x, y, x + iconSize, y + iconSize)
@@ -178,9 +186,9 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         stroke.color = Color.argb(50, 255, 255, 255)
         canvas.drawCircle(cx, cy, outerR, stroke)
 
-        // rotating tick ring
+        // rotating tick ring (follows the finger spin too)
         canvas.save()
-        canvas.rotate(phase, cx, cy)
+        canvas.rotate(phase + spinner.angle, cx, cy)
         for (i in 0 until 90) {
             val major = i % 15 == 0
             stroke.color = if (major) alpha(accent, 220) else Color.argb(55, 255, 255, 255)
@@ -231,6 +239,51 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         stroke.strokeCap = Paint.Cap.BUTT
     }
 
+    // ---------- spin gesture ----------
+
+    private fun inRing(x: Float, y: Float): Boolean {
+        val dist = kotlin.math.hypot(x - cx, y - cy)
+        return dist > hubR + 4 * d && dist < outerR + 12 * d
+    }
+
+    private var tracking = false
+
+    override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                tracking = spinner.enabled && inRing(ev.x, ev.y)
+                if (tracking) {
+                    spinner.onDown(ev, cx, cy)
+                    // keep the home swipe (notifications / long-press) from stealing the drag
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                }
+            }
+            android.view.MotionEvent.ACTION_MOVE -> if (tracking) return spinner.checkStart(ev, cx, cy)
+        }
+        return false
+    }
+
+    override fun onTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                tracking = spinner.enabled && inRing(ev.x, ev.y)
+                if (!tracking) return false
+                spinner.onDown(ev, cx, cy)
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (!tracking) return false
+                spinner.checkStart(ev, cx, cy)
+                spinner.onMove(ev, cx, cy)
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                if (tracking) spinner.onUp()
+                tracking = false
+            }
+        }
+        return tracking
+    }
+
     private fun start() {
         if (running) return
         running = true
@@ -240,6 +293,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
     private fun stop() {
         running = false
         removeCallbacks(frame)
+        spinner.stop()
     }
 
     override fun onWindowVisibilityChanged(visibility: Int) {
