@@ -97,6 +97,7 @@ class MainActivity : Activity() {
     private lateinit var techLine: TextView
     private lateinit var netDot: View
     private lateinit var banner: View
+    private lateinit var updateChip: TextView
     private lateinit var orbit: OrbitView
     private lateinit var toolsRow: LinearLayout
     private lateinit var dock: LinearLayout
@@ -141,6 +142,8 @@ class MainActivity : Activity() {
         techLine = findViewById(R.id.techLine)
         netDot = findViewById(R.id.netDot)
         banner = findViewById(R.id.banner)
+        updateChip = findViewById(R.id.updateChip)
+        updateChip.setOnClickListener { openTool(ToolsActivity.TOOL_UPDATE) }
         orbit = findViewById(R.id.orbit)
         toolsRow = findViewById(R.id.toolsRow)
         dock = findViewById(R.id.dock)
@@ -225,6 +228,31 @@ class MainActivity : Activity() {
         if (newAccent != accent) { accent = newAccent; applyAccent() }
         banner.visibility =
             if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
+        showUpdateChip()
+        if (Updater.shouldAutoCheck(this)) {
+            // stamp first so an offline phone doesn't retry on every Home press
+            prefs.edit().putLong("update_checked_at", System.currentTimeMillis()).apply()
+            io.execute {
+                try {
+                    val rel = Updater.fetchLatest()
+                    Updater.remember(this, rel)
+                    handler.post { showUpdateChip() }
+                } catch (e: Exception) {
+                    // offline or rate-limited; try again next interval
+                }
+            }
+        }
+    }
+
+    private fun showUpdateChip() {
+        val tag = Updater.knownUpdate(this)
+        if (tag == null) {
+            updateChip.visibility = View.GONE
+        } else {
+            updateChip.text = "▲ UPDATE AVAILABLE  ·  $tag  ›"
+            updateChip.setTextColor(accent)
+            updateChip.visibility = View.VISIBLE
+        }
     }
 
     override fun onPause() {
@@ -411,8 +439,9 @@ class MainActivity : Activity() {
         val sub = menu.menu.addSubMenu(0, 3, 2, "Accent colour")
         ACCENTS.forEachIndexed { i, (name, _) -> sub.add(0, 100 + i, i, name) }
         menu.menu.add(0, 4, 3, "IT tools")
-        menu.menu.add(0, 5, 4, "Default home app")
-        menu.menu.add(0, 6, 5, "Android settings")
+        menu.menu.add(0, 7, 4, "Check for updates")
+        menu.menu.add(0, 5, 5, "Default home app")
+        menu.menu.add(0, 6, 6, "Android settings")
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> { prefs.edit().putBoolean("wallpaper", !useWall).apply(); applyBackground() }
@@ -421,6 +450,7 @@ class MainActivity : Activity() {
                 4 -> openTool(null)
                 5 -> startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
                 6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
+                7 -> openTool(ToolsActivity.TOOL_UPDATE)
                 in 100 until 100 + ACCENTS.size -> {
                     accent = Color.parseColor(ACCENTS[item.itemId - 100].second)
                     prefs.edit().putInt("accent", accent).apply()

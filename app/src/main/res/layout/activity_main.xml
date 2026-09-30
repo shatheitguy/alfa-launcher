@@ -99,6 +99,21 @@
                     android:maxLines="1" />
             </LinearLayout>
 
+            <!-- update available chip -->
+            <TextView
+                android:id="@+id/updateChip"
+                style="@style/Tech"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/glass_pill"
+                android:paddingStart="14dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="8dp"
+                android:textColor="@color/text"
+                android:visibility="gone" />
+
             <!-- set-as-default banner -->
             <LinearLayout
                 android:id="@+id/banner"
