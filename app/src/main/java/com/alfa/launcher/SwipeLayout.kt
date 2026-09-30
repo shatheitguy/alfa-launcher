@@ -29,6 +29,8 @@ class SwipeLayout(context: Context, attrs: AttributeSet?) : FrameLayout(context,
     var home: View? = null
     var drawer: View? = null
     var canDrawerScrollUp: () -> Boolean = { false }
+    /** When false (e.g. an overlay is showing) no swipe / long-press gestures are handled. */
+    var gesturesEnabled = true
     var isOpen = false
         private set
 
@@ -43,7 +45,7 @@ class SwipeLayout(context: Context, attrs: AttributeSet?) : FrameLayout(context,
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onLongPress(e: MotionEvent) {
-            if (!isOpen && mode == NONE) listener?.onLongPress(e.x, e.y)
+            if (gesturesEnabled && !isOpen && mode == NONE) listener?.onLongPress(e.x, e.y)
         }
     })
 
@@ -75,7 +77,8 @@ class SwipeLayout(context: Context, attrs: AttributeSet?) : FrameLayout(context,
             return false
         }
         mode = when {
-            !isOpen && dy < 0 -> DRAG
+            !gesturesEnabled -> IGNORE
+            !isOpen && dy < 0 -> if (drawer != null) DRAG else IGNORE
             !isOpen && dy > 0 -> PULL
             isOpen && dy > 0 && !canDrawerScrollUp() -> DRAG
             else -> IGNORE

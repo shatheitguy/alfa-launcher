@@ -37,7 +37,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         set(v) { field = v.coerceIn(0f, 1f); invalidate() }
 
     private val d = resources.displayMetrics.density
-    private val iconSize = (50 * d).toInt()
+    private val iconSize = (54 * d).toInt()
     private val icons = mutableListOf<View>()
 
     val hub = LinearLayout(context)
@@ -113,8 +113,8 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         apps.take(MAX).forEach { app ->
             val iv = ImageView(context).apply {
                 setImageDrawable(app.icon)
-                background = context.getDrawable(R.drawable.orb)
-                val p = (8 * d).toInt()
+                background = context.getDrawable(R.drawable.ripple_orb)
+                val p = (1 * d).toInt()
                 setPadding(p, p, p, p)
                 contentDescription = app.label
                 setOnClickListener { onClick(app) }

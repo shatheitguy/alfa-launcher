@@ -43,8 +43,8 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import java.net.Inet4Address
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,7 +90,6 @@ class MainActivity : Activity() {
     private lateinit var home: View
     private lateinit var homeContent: View
     private lateinit var hud: HudBackground
-    private lateinit var drawer: View
     private lateinit var clock: TextView
     private lateinit var date: TextView
     private lateinit var sysInfo: TextView
@@ -101,16 +100,22 @@ class MainActivity : Activity() {
     private lateinit var orbit: OrbitView
     private lateinit var toolsRow: LinearLayout
     private lateinit var dock: LinearLayout
-    private lateinit var drawerSearch: EditText
-    private lateinit var drawerCount: TextView
-    private lateinit var drawerGrid: RecyclerView
+    private lateinit var galaxy: View
+    private lateinit var galaxyContent: View
+    private lateinit var galaxyHud: HudBackground
+    private lateinit var galaxyView: GalaxyView
+    private lateinit var galaxySearch: EditText
+    private lateinit var galaxyCount: TextView
+    private lateinit var galaxyPage: TextView
     private lateinit var menuAnchor: View
-    private lateinit var drawerAdapter: AppAdapter
 
-    private var allApps: List<AppEntry> = emptyList()
+    private var rawApps: List<AppEntry> = emptyList()   // original icons
+    private var allApps: List<AppEntry> = emptyList()   // styled icons
     private var byKey: Map<String, AppEntry> = emptyMap()
-    private var drawerFiltered: List<AppEntry> = emptyList()
+    private var filtered: List<AppEntry> = emptyList()
     private var accent = 0
+    private var iconStyle = IconStyler.NEON
+    private var styleJob = 0
     private var tickCount = 0
 
     private val pkgReceiver = object : BroadcastReceiver() {
@@ -135,7 +140,6 @@ class MainActivity : Activity() {
         home = findViewById(R.id.home)
         homeContent = findViewById(R.id.homeContent)
         hud = findViewById(R.id.hud)
-        drawer = findViewById(R.id.drawer)
         clock = findViewById(R.id.clock)
         date = findViewById(R.id.date)
         sysInfo = findViewById(R.id.sysInfo)
@@ -147,46 +151,49 @@ class MainActivity : Activity() {
         orbit = findViewById(R.id.orbit)
         toolsRow = findViewById(R.id.toolsRow)
         dock = findViewById(R.id.dock)
-        drawerSearch = findViewById(R.id.drawerSearch)
-        drawerCount = findViewById(R.id.drawerCount)
-        drawerGrid = findViewById(R.id.drawerGrid)
+        galaxy = findViewById(R.id.galaxy)
+        galaxyContent = findViewById(R.id.galaxyContent)
+        galaxyHud = findViewById(R.id.galaxyHud)
+        galaxyView = findViewById(R.id.galaxyView)
+        galaxySearch = findViewById(R.id.galaxySearch)
+        galaxyCount = findViewById(R.id.galaxyCount)
+        galaxyPage = findViewById(R.id.galaxyPage)
         menuAnchor = findViewById(R.id.menuAnchor)
 
         accent = accentOf(this)
+        iconStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
 
         swipe.home = home
-        swipe.drawer = drawer
-        swipe.canDrawerScrollUp = { drawerGrid.canScrollVertically(-1) }
         swipe.listener = object : SwipeLayout.Listener {
             override fun onDrawerOpened() {}
-            override fun onDrawerClosed() {
-                drawerSearch.setText("")
-                hideKeyboard()
-                drawerGrid.scrollToPosition(0)
-            }
+            override fun onDrawerClosed() {}
             override fun onPullDown() = expandNotifications()
             override fun onLongPress(x: Float, y: Float) = showHomeMenu(x, y)
         }
         swipe.setOnApplyWindowInsetsListener { _, insets -> applyInsets(insets); insets }
 
-        drawerAdapter = AppAdapter(::launch, ::showAppMenu)
-        drawerGrid.layoutManager = GridLayoutManager(this, (resources.configuration.screenWidthDp / 84).coerceIn(4, 6))
-        drawerGrid.adapter = drawerAdapter
+        galaxyView.onAppClick = ::launch
+        galaxyView.onAppLongClick = ::showAppMenu
+        galaxyView.onPageChanged = { p, n -> galaxyPage.text = "PAGE ${p + 1} / $n" }
+        galaxyView.hub.setOnClickListener { closeGalaxy() }
+        findViewById<View>(R.id.galaxyClose).setOnClickListener { closeGalaxy() }
+        findViewById<View>(R.id.galaxyPrev).setOnClickListener { galaxyView.prev() }
+        findViewById<View>(R.id.galaxyNext).setOnClickListener { galaxyView.next() }
 
-        drawerSearch.addTextChangedListener(object : TextWatcher {
+        galaxySearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) = filterDrawer()
+            override fun afterTextChanged(s: Editable?) = filterApps(true)
         })
-        drawerSearch.setOnEditorActionListener { _, actionId, _ ->
+        galaxySearch.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_NULL) {
-                drawerFiltered.firstOrNull()?.let { launch(it) }
+                filtered.firstOrNull()?.let { launch(it) }
                 true
             } else false
         }
 
-        findViewById<View>(R.id.searchPill).setOnClickListener { openSearch() }
-        orbit.hub.setOnClickListener { swipe.open() }
+        findViewById<View>(R.id.searchPill).setOnClickListener { openGalaxy(true) }
+        orbit.hub.setOnClickListener { openGalaxy(false) }
         orbit.hub.setOnLongClickListener { startSafe(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)); true }
         clock.setOnClickListener { startSafe(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
         date.setOnClickListener {
@@ -225,7 +232,7 @@ class MainActivity : Activity() {
         handler.removeCallbacks(tick)
         handler.post(tick)
         val newAccent = accentOf(this)
-        if (newAccent != accent) { accent = newAccent; applyAccent() }
+        if (newAccent != accent) { accent = newAccent; applyAccent(); restyleIcons() }
         banner.visibility =
             if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
         showUpdateChip()
@@ -269,12 +276,12 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        if (swipe.isOpen) swipe.close() else hideKeyboard()
+        if (galaxy.visibility == View.VISIBLE) closeGalaxy() else hideKeyboard()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (swipe.isOpen) swipe.close()
+        if (galaxy.visibility == View.VISIBLE) closeGalaxy()
     }
 
     @Deprecated("Deprecated in Java")
@@ -304,7 +311,7 @@ class MainActivity : Activity() {
         val r = insets.systemWindowInsetRight
         val b = insets.systemWindowInsetBottom
         homeContent.setPadding(dp(20) + l, dp(18) + t, dp(20) + r, dp(12) + b)
-        drawer.setPadding(dp(14) + l, dp(6) + t, dp(14) + r, b)
+        galaxyContent.setPadding(dp(18) + l, dp(16) + t, dp(18) + r, dp(12) + b)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -322,13 +329,34 @@ class MainActivity : Activity() {
                     AppEntry(it.loadLabel(pm).toString(), it.activityInfo.packageName, it.activityInfo.name, it.loadIcon(pm))
                 }
                 .sortedBy { it.label.lowercase(Locale.ROOT) }
+            val styled = styleAll(list, iconStyle, accent)
             handler.post {
-                allApps = list
-                byKey = list.associateBy { it.key }
-                if (!prefs.contains("orbit")) initDefaults()
-                refreshHome()
-                filterDrawer()
+                rawApps = list
+                publishApps(styled, resetPage = false)
             }
+        }
+    }
+
+    private fun styleAll(list: List<AppEntry>, style: String, color: Int): List<AppEntry> =
+        list.map { it.copy(icon = IconStyler.render(resources, it.icon, style, color)) }
+
+    private fun publishApps(styled: List<AppEntry>, resetPage: Boolean) {
+        allApps = styled
+        byKey = styled.associateBy { it.key }
+        if (!prefs.contains("orbit")) initDefaults()
+        refreshHome()
+        filterApps(resetPage)
+    }
+
+    /** Re-render every icon (after an accent or icon-style change) off the main thread. */
+    private fun restyleIcons() {
+        val job = ++styleJob
+        val raw = rawApps
+        val style = iconStyle
+        val color = accent
+        io.execute {
+            val styled = styleAll(raw, style, color)
+            handler.post { if (job == styleJob) publishApps(styled, resetPage = false) }
         }
     }
 
@@ -377,13 +405,60 @@ class MainActivity : Activity() {
         dock.visibility = if (dock.childCount == 0) View.GONE else View.VISIBLE
     }
 
-    private fun filterDrawer() {
-        val q = drawerSearch.text.toString().trim().lowercase(Locale.ROOT)
-        drawerFiltered = if (q.isEmpty()) allApps else allApps.filter {
+    private fun filterApps(resetPage: Boolean) {
+        val q = galaxySearch.text.toString().trim().lowercase(Locale.ROOT)
+        filtered = if (q.isEmpty()) allApps else allApps.filter {
             it.label.lowercase(Locale.ROOT).contains(q) || it.pkg.lowercase(Locale.ROOT).contains(q)
         }
-        drawerAdapter.submit(drawerFiltered)
-        drawerCount.text = if (q.isEmpty()) "ALL APPS · ${allApps.size}" else "RESULTS · ${drawerFiltered.size}"
+        galaxyView.setApps(filtered, resetPage)
+        galaxyCount.text = if (q.isEmpty()) {
+            "${allApps.size} APPS  ·  SWIPE ↔ TO ORBIT  ·  TAP CENTRE TO CLOSE"
+        } else {
+            "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"
+        }
+    }
+
+    private fun openGalaxy(withKeyboard: Boolean) {
+        if (galaxy.visibility != View.VISIBLE) {
+            swipe.gesturesEnabled = false
+            galaxy.visibility = View.VISIBLE
+            galaxy.alpha = 0f
+            galaxyView.scaleX = 0.55f
+            galaxyView.scaleY = 0.55f
+            galaxyView.rotation = -25f
+            galaxy.animate().alpha(1f).setDuration(200).start()
+            galaxyView.animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(380)
+                .setInterpolator(DecelerateInterpolator(2.2f)).start()
+            home.animate().alpha(0f).setDuration(200).start()
+        }
+        if (withKeyboard) {
+            galaxySearch.requestFocus()
+            handler.postDelayed({
+                getSystemService(InputMethodManager::class.java)?.showSoftInput(galaxySearch, InputMethodManager.SHOW_IMPLICIT)
+            }, 200)
+        }
+    }
+
+    private fun closeGalaxy(animate: Boolean = true) {
+        if (galaxy.visibility != View.VISIBLE) return
+        hideKeyboard()
+        swipe.gesturesEnabled = true
+        val finish = {
+            galaxy.visibility = View.GONE
+            if (galaxySearch.text.isNotEmpty()) galaxySearch.setText("") else filterApps(true)
+        }
+        if (animate) {
+            galaxyView.animate().scaleX(0.6f).scaleY(0.6f).rotation(20f).setDuration(220)
+                .setInterpolator(AccelerateInterpolator()).start()
+            galaxy.animate().alpha(0f).setDuration(220).withEndAction { finish() }.start()
+            home.animate().alpha(1f).setDuration(220).start()
+        } else {
+            galaxy.animate().cancel()
+            galaxyView.animate().cancel()
+            home.animate().cancel()
+            home.alpha = 1f
+            finish()
+        }
     }
 
     private fun launch(app: AppEntry) {
@@ -392,7 +467,7 @@ class MainActivity : Activity() {
             .setComponent(ComponentName(app.pkg, app.cls))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         startSafe(intent)
-        if (swipe.isOpen) handler.postDelayed({ swipe.close(false) }, 350)
+        if (galaxy.visibility == View.VISIBLE) handler.postDelayed({ closeGalaxy(false) }, 400)
     }
 
     private fun showAppMenu(anchor: View, app: AppEntry) {
@@ -438,6 +513,10 @@ class MainActivity : Activity() {
         menu.menu.add(0, 2, 1, "Change wallpaper")
         val sub = menu.menu.addSubMenu(0, 3, 2, "Accent colour")
         ACCENTS.forEachIndexed { i, (name, _) -> sub.add(0, 100 + i, i, name) }
+        val iconSub = menu.menu.addSubMenu(0, 8, 2, "Icon style")
+        IconStyler.STYLES.forEachIndexed { i, (id, name) ->
+            iconSub.add(0, 200 + i, i, if (id == iconStyle) "●  $name" else "○  $name")
+        }
         menu.menu.add(0, 4, 3, "IT tools")
         menu.menu.add(0, 7, 4, "Check for updates")
         menu.menu.add(0, 5, 5, "Default home app")
@@ -446,7 +525,12 @@ class MainActivity : Activity() {
             when (item.itemId) {
                 1 -> { prefs.edit().putBoolean("wallpaper", !useWall).apply(); applyBackground() }
                 2 -> startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
-                3 -> return@setOnMenuItemClickListener false
+                3, 8 -> return@setOnMenuItemClickListener false
+                in 200 until 200 + IconStyler.STYLES.size -> {
+                    iconStyle = IconStyler.STYLES[item.itemId - 200].first
+                    prefs.edit().putString("icon_style", iconStyle).apply()
+                    restyleIcons()
+                }
                 4 -> openTool(null)
                 5 -> startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
                 6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
@@ -455,6 +539,7 @@ class MainActivity : Activity() {
                     accent = Color.parseColor(ACCENTS[item.itemId - 100].second)
                     prefs.edit().putInt("accent", accent).apply()
                     applyAccent()
+                    if (iconStyle != IconStyler.ORIGINAL) restyleIcons()
                 }
             }
             true
@@ -471,7 +556,9 @@ class MainActivity : Activity() {
         orbit.accent = accent
         netDot.backgroundTintList = ColorStateList.valueOf(accent)
         findViewById<View>(R.id.bannerSet).backgroundTintList = ColorStateList.valueOf(accent)
-        drawerSearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
+        galaxyHud.accent = accent
+        galaxyView.accent = accent
+        galaxySearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
         for (i in 0 until toolsRow.childCount) {
             (toolsRow.getChildAt(i) as? TextView)?.setTextColor(accent)
         }
@@ -507,17 +594,9 @@ class MainActivity : Activity() {
         startSafe(i)
     }
 
-    private fun openSearch() {
-        swipe.open()
-        drawerSearch.requestFocus()
-        handler.postDelayed({
-            getSystemService(InputMethodManager::class.java)?.showSoftInput(drawerSearch, InputMethodManager.SHOW_IMPLICIT)
-        }, 180)
-    }
-
     private fun hideKeyboard() {
-        drawerSearch.clearFocus()
-        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(drawerSearch.windowToken, 0)
+        galaxySearch.clearFocus()
+        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(galaxySearch.windowToken, 0)
     }
 
     @SuppressLint("WrongConstant")
@@ -588,7 +667,7 @@ class MainActivity : Activity() {
         orbit.storage = stoFrac
         orbit.hubValue.text = "$bat%"
         orbit.hubLabel.text = if (charging) "CHARGING" else "BATTERY"
-        orbit.hubSub.text = String.format(Locale.US, "%.1f°C", temp)
+        orbit.hubSub.text = String.format(Locale.US, "%.0f°C · TAP ◎", temp)
 
         val up = SystemClock.elapsedRealtime() / 1000
         sysInfo.text = buildString {
