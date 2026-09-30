@@ -413,7 +413,7 @@ class MainActivity : Activity() {
         }
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
-            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  DRAG TO SPIN  ·  ‹ › PAGES"
+            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  CIRCLE TO SPIN  ·  SWIPE ↔ FOR PAGES"
             else "${allApps.size} APPS  ·  SWIPE ↔ FOR PAGES"
         } else {
             "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"

@@ -339,14 +339,52 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
 
     private fun overHub(x: Float, y: Float) = kotlin.math.hypot(x - cx, y - cy) < hubR
 
+    // finger path of the current gesture: x0, y0, x1, y1, ...
+    private val path = ArrayList<Float>()
+
+    private fun record(ev: MotionEvent) {
+        if (path.size < 400) { path.add(ev.x); path.add(ev.y) }
+    }
+
+    /**
+     * Distinguishes a page swipe from a spin: a page swipe is long, mostly horizontal
+     * and nearly straight; a spin follows the curve of the ring.
+     * Returns 1 = next page, -1 = previous page, 0 = spin.
+     */
+    private fun pageSwipe(): Int {
+        if (path.size < 4) return 0
+        val x0 = path[0]
+        val y0 = path[1]
+        val dx = path[path.size - 2] - x0
+        val dy = path[path.size - 1] - y0
+        val len = kotlin.math.hypot(dx, dy)
+        if (abs(dx) < width * 0.3f || abs(dx) < abs(dy) * 2f || len == 0f) return 0
+        var maxDev = 0f
+        var i = 2
+        while (i < path.size) {
+            val dev = abs((path[i] - x0) * dy - (path[i + 1] - y0) * dx) / len
+            if (dev > maxDev) maxDev = dev
+            i += 2
+        }
+        if (maxDev > len * 0.07f) return 0
+        return if (dx < 0) 1 else -1
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         if (spinner.enabled) {
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     spinTracking = !overHub(ev.x, ev.y)
-                    if (spinTracking) spinner.onDown(ev, cx, cy)
+                    if (spinTracking) {
+                        spinner.onDown(ev, cx, cy)
+                        path.clear()
+                        record(ev)
+                    }
                 }
-                MotionEvent.ACTION_MOVE -> if (spinTracking) return spinner.checkStart(ev, cx, cy)
+                MotionEvent.ACTION_MOVE -> if (spinTracking) {
+                    record(ev)
+                    return spinner.checkStart(ev, cx, cy)
+                }
             }
             return false
         }
@@ -369,12 +407,26 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                 MotionEvent.ACTION_DOWN -> {
                     spinTracking = true
                     spinner.onDown(ev, cx, cy)
+                    path.clear()
+                    record(ev)
                 }
                 MotionEvent.ACTION_MOVE -> if (spinTracking) {
+                    record(ev)
                     spinner.checkStart(ev, cx, cy)
                     spinner.onMove(ev, cx, cy)
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
+                    if (spinTracking) {
+                        record(ev)
+                        when (pageSwipe()) {
+                            1 -> { spinner.endWithoutFling(); next() }
+                            -1 -> { spinner.endWithoutFling(); prev() }
+                            else -> spinner.onUp()
+                        }
+                    }
+                    spinTracking = false
+                }
+                MotionEvent.ACTION_CANCEL -> {
                     if (spinTracking) spinner.onUp()
                     spinTracking = false
                 }

@@ -87,6 +87,12 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
         add(da)
     }
 
+    /** End the drag without momentum (e.g. the gesture turned out to be a page swipe). */
+    fun endWithoutFling() {
+        dragging = false
+        velocity = 0f
+    }
+
     fun onUp() {
         if (dragging && abs(velocity) > 0.03f) {
             velocity = velocity.coerceIn(-2.5f, 2.5f)
