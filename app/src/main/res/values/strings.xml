@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ALFA Launcher</string>
+    <string name="prompt">root@alfa:~$ </string>
+    <string name="input_hint">app name or \'help\'</string>
+</resources>
