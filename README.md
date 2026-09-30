@@ -14,10 +14,14 @@ Every push to `main` is built by GitHub Actions and published under [Releases](.
 - Dark carbon background with accent glow (or switch to your own wallpaper)
 - Clock, date, device model, Android version and uptime
 - Network readout: connection type and local IP (tap for full network info)
-- Dock (5 apps) and search
-- **Swipe up** opens the app drawer, **swipe down** opens notifications, **long-press** empty space opens settings
+- **Tap the orbit centre** to open **All Apps orbit**: every app on three spinning rings (6 / 12 / 18 per page). Swipe left/right to rotate to the next page, and search to filter. The hub shows the letter range and page.
+- Dock (5 apps). **Swipe down** opens notifications, **long-press** empty space opens settings
 - Long-press any app to add/remove it from the orbit or dock, see app info, or uninstall
-- Accent colours: Crimson, Ice blue, Mint, Amber, Violet, Mono
+- **Icon styles**:
+  - **Neon glyph**: glowing single-colour glyph in a glass orb (uses Android 13 themed icons when available)
+  - **Colour orb**: full-colour icon inside the orb
+  - **Original**: the stock app icons
+- Accent colours: Crimson, Ice blue, Mint, Amber, Violet, Mono. The icons are redrawn in your accent colour.
 
 ## IT Tools (built in)
 
