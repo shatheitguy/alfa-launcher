@@ -4,23 +4,13 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- hexagon frame -->
     <path
-        android:pathData="M54,27 L77.4,40.5 L77.4,67.5 L54,81 L30.6,67.5 L30.6,40.5 Z"
-        android:strokeColor="#00F0FF"
-        android:strokeWidth="2.5"
+        android:pathData="M38,71 L54,37 L70,71"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
         android:strokeLineJoin="round" />
-    <!-- "A" glyph -->
     <path
-        android:pathData="M43,67 L54,39 L65,67 M47,57 L61,57"
-        android:strokeColor="#00F0FF"
-        android:strokeWidth="3.5"
-        android:strokeLineCap="square"
-        android:strokeLineJoin="miter" />
-    <!-- prompt cursor -->
-    <path
-        android:pathData="M60,72 L70,72"
-        android:strokeColor="#FF2BD6"
-        android:strokeWidth="3"
-        android:strokeLineCap="square" />
+        android:pathData="M54,56 m-4.5,0 a4.5,4.5 0,1 1,9 0 a4.5,4.5 0,1 1,-9 0"
+        android:fillColor="#FFFF2D3D" />
 </vector>

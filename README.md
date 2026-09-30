@@ -1,22 +1,6 @@
-# ALFA//OS Launcher
+# ALFA Launcher
 
-A futuristic, terminal-style Android home screen for IT people.
-
-```
-ALFA//OS  v1.0                           ● ONLINE
-────────────────────────────────────────────────
-23:41 :07
-TUE 30.09.2026
-┌ // SYSTEM TELEMETRY ─────────────────────────┐
-│ DEV  SAMSUNG SM-S918B :: A14                 │
-│ BAT  ████████░░░░  67%                       │
-│ RAM  ██████░░░░░░ 3.9/7.6G                   │
-│ STO  ████░░░░░░░░ 41.2/118.0G                │
-│ NET  WIFI     UPT  02d 04:11                 │
-└──────────────────────────────────────────────┘
-> indexed 132 packages
-root@alfa:~$ _
-```
+A sci-fi, minimal Android **home screen replacement** with a built-in IT toolkit.
 
 ## Download
 
@@ -24,23 +8,34 @@ root@alfa:~$ _
 
 Every push to `main` is built by GitHub Actions and published under [Releases](../../releases).
 
-## Features
+## Home screen
 
-- Animated HUD background — code rain, grid, scanline, corner brackets
-- Neon glitching clock, live battery / RAM / storage / network / uptime telemetry
-- App grid with hex indexes; long-press for **INFO** / **UNINSTALL**
-- Terminal prompt: type to filter apps, press Enter to launch the first match
+- **Orbit dial**: up to 8 favourite apps orbit a central hub. The hub ring shows battery, and the outer arcs show RAM and storage. The tick rings rotate slowly.
+- Dark carbon background with accent glow (or switch to your own wallpaper)
+- Clock, date, device model, Android version and uptime
+- Network readout: connection type and local IP (tap for full network info)
+- Dock (5 apps) and search
+- **Swipe up** opens the app drawer, **swipe down** opens notifications, **long-press** empty space opens settings
+- Long-press any app to add/remove it from the orbit or dock, see app info, or uninstall
+- Accent colours: Crimson, Ice blue, Mint, Amber, Violet, Mono
 
-| Command | Action |
+## IT Tools (built in)
+
+| Tool | What it does |
 |---|---|
-| `help` | list commands |
-| `home` | set ALFA as default launcher |
-| `settings` `wifi` `bt` `display` `battery` | open system panels |
-| `whoami` `date` `clear` | terminal stuff |
+| Network info | transport, interface, IPv4/IPv6, gateway, DNS, private DNS, MTU, signal, public IP |
+| Ping | ICMP ping any host with live output |
+| DNS lookup | A / AAAA records, reverse PTR, timing |
+| Port check | TCP connect scan on one host (common / web / 1-1024 presets) |
+| Subnet calc | network, broadcast, mask, wildcard, host range, class and type |
+| Device info | SoC, CPU, RAM, storage, display, battery health, kernel, patch level, root check |
+| Hash / Base64 | MD5, SHA-1, SHA-256, SHA-512, CRC32, Base64 encode/decode |
+| Password gen | secure random passwords with entropy estimate |
+| System panels | one-tap jumps to Wi-Fi, VPN, developer options, default apps, usage access and more |
 
 ## Install
 
-1. Download the APK on your phone and allow "Install unknown apps" for your browser.
-2. Open **ALFA Launcher**, type `home`, and pick it as the default Home app.
+1. Download the APK on your phone and allow "Install unknown apps".
+2. Open **ALFA Launcher** and tap **Set as default**. It then replaces the stock launcher, and pressing Home brings you here.
 
 Requires Android 8.0+.
