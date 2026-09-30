@@ -61,12 +61,12 @@ object IconStyler {
         c.drawBitmap(glyph, off, off, p)
 
         // accent ring + faint inner ring
-        val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = ringW
-            color = accent
-            alpha = if (style == NEON) 230 else 170
-        }
+        val ringAlpha = if (style == NEON) 230 else 170
+        val ring = Paint(Paint.ANTI_ALIAS_FLAG)
+        ring.style = Paint.Style.STROKE
+        ring.strokeWidth = ringW
+        ring.color = accent
+        ring.alpha = ringAlpha
         c.drawCircle(r, r, r - ringW / 2f - 1f, ring)
         ring.color = Color.argb(35, 255, 255, 255)
         ring.strokeWidth = 1f * res.displayMetrics.density
