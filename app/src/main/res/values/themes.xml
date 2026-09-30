@@ -1,17 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Alfa" parent="android:Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">@color/bg</item>
-        <item name="android:statusBarColor">@color/bg</item>
-        <item name="android:navigationBarColor">@color/bg</item>
-        <item name="android:colorAccent">@color/cyan</item>
+    <style name="Theme.Alfa" parent="android:Theme.Material.Wallpaper.NoTitleBar">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">@color/accent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="Mono">
-        <item name="android:fontFamily">monospace</item>
-        <item name="android:textColor">@color/cyan</item>
+    <style name="Theme.Alfa.Tools" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/tools_bg</item>
+        <item name="android:statusBarColor">@color/tools_bg</item>
+        <item name="android:navigationBarColor">@color/tools_bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+    </style>
+
+    <style name="Label">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColor">@color/text</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:includeFontPadding">false</item>
+        <item name="android:shadowColor">#99000000</item>
+        <item name="android:shadowRadius">6</item>
+        <item name="android:shadowDy">1</item>
+    </style>
+
+    <style name="Tech">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">@color/text_2</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:shadowColor">#99000000</item>
+        <item name="android:shadowRadius">6</item>
     </style>
 </resources>

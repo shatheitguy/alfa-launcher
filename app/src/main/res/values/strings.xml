@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ALFA Launcher</string>
-    <string name="prompt">root@alfa:~$ </string>
-    <string name="input_hint">app name or \'help\'</string>
+    <string name="search_apps">Search apps</string>
+    <string name="banner_title">Make ALFA your home screen</string>
+    <string name="banner_body">Replace the stock Android launcher. Press Home any time to come back here.</string>
+    <string name="banner_set">Set as default</string>
+    <string name="banner_later">Later</string>
+    <string name="fav_hint">Long-press any app in the drawer to pin it here</string>
 </resources>

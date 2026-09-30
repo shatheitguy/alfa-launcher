@@ -13,7 +13,9 @@ data class AppEntry(
     val pkg: String,
     val cls: String,
     val icon: Drawable,
-)
+) {
+    val key: String get() = "$pkg/$cls"
+}
 
 class AppAdapter(
     private val onClick: (AppEntry) -> Unit,
@@ -23,7 +25,6 @@ class AppAdapter(
     private var items: List<AppEntry> = emptyList()
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
-        val idx: TextView = v.findViewById(R.id.idx)
         val icon: ImageView = v.findViewById(R.id.icon)
         val label: TextView = v.findViewById(R.id.label)
     }
@@ -40,9 +41,8 @@ class AppAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val app = items[position]
-        holder.idx.text = String.format("0x%02X", position)
         holder.icon.setImageDrawable(app.icon)
-        holder.label.text = app.label.lowercase()
+        holder.label.text = app.label
         holder.itemView.setOnClickListener { onClick(app) }
         holder.itemView.setOnLongClickListener { onLongClick(it, app); true }
     }

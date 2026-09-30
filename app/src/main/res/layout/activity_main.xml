@@ -1,195 +1,307 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.alfa.launcher.SwipeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/swipe"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:layout_height="match_parent">
 
-    <com.alfa.launcher.CyberBackgroundView
-        android:id="@+id/bg"
+    <!-- ================= HOME ================= -->
+    <FrameLayout
+        android:id="@+id/home"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent">
 
-    <LinearLayout
-        android:id="@+id/root"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fitsSystemWindows="true"
-        android:focusable="true"
-        android:focusableInTouchMode="true"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingTop="14dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="10dp">
-
-        <!-- header -->
-        <LinearLayout
+        <com.alfa.launcher.HudBackground
+            android:id="@+id/hud"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/header"
-                style="@style/Mono"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:letterSpacing="0.15"
-                android:textSize="11sp" />
-
-            <TextView
-                android:id="@+id/status"
-                style="@style/Mono"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:letterSpacing="0.15"
-                android:textColor="@color/green"
-                android:textSize="11sp" />
-        </LinearLayout>
+            android:layout_height="match_parent" />
 
         <View
             android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="8dp"
-            android:background="@color/cyan_dim" />
+            android:layout_height="200dp"
+            android:layout_gravity="top"
+            android:background="@drawable/scrim_top" />
 
-        <!-- clock -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:baselineAligned="true"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/clock"
-                style="@style/Mono"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:shadowColor="@color/cyan"
-                android:shadowRadius="28"
-                android:textSize="68sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/seconds"
-                style="@style/Mono"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:shadowColor="@color/magenta"
-                android:shadowRadius="16"
-                android:textColor="@color/magenta"
-                android:textSize="22sp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/date"
-            style="@style/Mono"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:letterSpacing="0.2"
-            android:textColor="@color/text_dim"
-            android:textSize="13sp" />
-
-        <!-- system stats -->
-        <LinearLayout
+        <View
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/panel"
-            android:orientation="vertical"
-            android:padding="10dp">
+            android:layout_height="260dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/scrim_bottom" />
 
-            <TextView
-                style="@style/Mono"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="6dp"
-                android:letterSpacing="0.15"
-                android:text="// SYSTEM TELEMETRY"
-                android:textColor="@color/magenta"
-                android:textSize="10sp" />
+        <LinearLayout
+            android:id="@+id/homeContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/stats"
-                style="@style/Mono"
+            <!-- top bar: clock + system readout -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:lineSpacingExtra="4dp"
-                android:textSize="12sp" />
+                android:gravity="bottom"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/clock"
+                        style="@style/Label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-thin"
+                        android:includeFontPadding="false"
+                        android:textSize="64sp" />
+
+                    <TextView
+                        android:id="@+id/date"
+                        style="@style/Tech"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:letterSpacing="0.2"
+                        android:textColor="@color/text" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/sysInfo"
+                    style="@style/Tech"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:lineSpacingExtra="3dp"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/netDot"
+                    android:layout_width="6dp"
+                    android:layout_height="6dp"
+                    android:background="@drawable/dot" />
+
+                <TextView
+                    android:id="@+id/techLine"
+                    style="@style/Tech"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+            </LinearLayout>
+
+            <!-- set-as-default banner -->
+            <LinearLayout
+                android:id="@+id/banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/glass"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/banner_title"
+                    android:textSize="15sp" />
+
+                <TextView
+                    style="@style/Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/banner_body"
+                    android:textColor="@color/text_2" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="end|center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/bannerLater"
+                        style="@style/Label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:padding="10dp"
+                        android:text="@string/banner_later"
+                        android:textColor="@color/text_2"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/bannerSet"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/pill_accent"
+                        android:fontFamily="sans-serif-medium"
+                        android:paddingStart="18dp"
+                        android:paddingTop="9dp"
+                        android:paddingEnd="18dp"
+                        android:paddingBottom="9dp"
+                        android:text="@string/banner_set"
+                        android:textColor="#FF000000"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- orbit dial -->
+            <com.alfa.launcher.OrbitView
+                android:id="@+id/orbit"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="6dp"
+                android:layout_weight="1" />
+
+            <!-- IT tools quick row -->
+            <LinearLayout
+                android:id="@+id/toolsRow"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal" />
+
+            <!-- search -->
+            <LinearLayout
+                android:id="@+id/searchPill"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/glass_pill"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:alpha="0.7"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_search" />
+
+                <TextView
+                    style="@style/Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="@string/search_apps"
+                    android:textColor="@color/text_2"
+                    android:textSize="14sp" />
+
+                <TextView
+                    style="@style/Tech"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SWIPE ↑"
+                    android:textColor="@color/text_3"
+                    android:textSize="9sp" />
+            </LinearLayout>
+
+            <!-- dock -->
+            <LinearLayout
+                android:id="@+id/dock"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/glass"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
         </LinearLayout>
+    </FrameLayout>
 
-        <!-- terminal log -->
-        <TextView
-            android:id="@+id/log"
-            style="@style/Mono"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:lineSpacingExtra="2dp"
-            android:maxLines="4"
-            android:minLines="4"
-            android:textColor="@color/green"
-            android:textSize="11sp" />
+    <!-- ================= DRAWER ================= -->
+    <LinearLayout
+        android:id="@+id/drawer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/drawer_bg"
+        android:orientation="vertical"
+        android:visibility="invisible">
 
-        <TextView
-            android:id="@+id/appsHeader"
-            style="@style/Mono"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="4dp"
-            android:letterSpacing="0.15"
-            android:textColor="@color/magenta"
-            android:textSize="10sp" />
+        <View
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/handle" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/apps"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fadingEdgeLength="24dp"
-            android:overScrollMode="never"
-            android:requiresFadingEdge="vertical" />
-
-        <!-- terminal input -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/panel"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/glass_pill"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp">
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp">
 
-            <TextView
-                style="@style/Mono"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/prompt"
-                android:textColor="@color/green"
-                android:textSize="14sp" />
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:alpha="0.7"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_search" />
 
             <EditText
-                android:id="@+id/input"
+                android:id="@+id/drawerSearch"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:background="@null"
-                android:fontFamily="monospace"
-                android:hint="@string/input_hint"
+                android:hint="@string/search_apps"
                 android:imeOptions="actionGo"
                 android:importantForAutofill="no"
                 android:inputType="text|textNoSuggestions"
                 android:singleLine="true"
-                android:textColor="@color/cyan"
-                android:textColorHint="@color/text_dim"
-                android:textCursorDrawable="@drawable/cursor"
-                android:textSize="14sp" />
+                android:textColor="@color/text"
+                android:textColorHint="@color/text_3"
+                android:textSize="15sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/drawerCount"
+            style="@style/Tech"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp"
+            android:letterSpacing="0.2"
+            android:textColor="@color/text_3"
+            android:textSize="10sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/drawerGrid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:paddingBottom="16dp" />
     </LinearLayout>
-</FrameLayout>
+
+    <View
+        android:id="@+id/menuAnchor"
+        android:layout_width="1dp"
+        android:layout_height="1dp" />
+</com.alfa.launcher.SwipeLayout>
