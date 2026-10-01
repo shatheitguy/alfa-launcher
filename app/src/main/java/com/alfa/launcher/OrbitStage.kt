@@ -244,15 +244,43 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         onTransform(zoom, tiltX, tiltY)
     }
 
+    // eased live tilt: drags move a goal, a vsync loop glides the shown tilt toward it
+    private var goalX = 0f
+    private var goalY = 0f
+    private var easing = false
+    private var easeFrame = 0L
+    private val ease = object : Runnable {
+        override fun run() {
+            if (!easing) return
+            val now = System.nanoTime() / 1_000_000L
+            val dt = (now - easeFrame).coerceIn(1L, 40L).toFloat()
+            easeFrame = now
+            val k = 1f - kotlin.math.exp(-dt / 45f)
+            tiltX += (goalX - tiltX) * k
+            tiltY += (goalY - tiltY) * k
+            apply()
+            if (abs(goalX - tiltX) < 0.05f && abs(goalY - tiltY) < 0.05f) easing = false
+            else postOnAnimation(this)
+        }
+    }
+
     /** Live tilt driven by the orbit's own one-finger drag (screen-space deltas in px). */
     fun tiltBy(dx: Float, dy: Float) {
         spring?.cancel()
-        tilt(dx, dy)
-        apply()
+        if (!easing) { goalX = tiltX; goalY = tiltY }
+        goalY = (goalY + dx * degPerPx).coerceIn(-maxTilt, maxTilt)
+        goalX = (goalX - dy * degPerPx).coerceIn(-maxTilt, maxTilt)
+        if (!easing) {
+            easing = true
+            easeFrame = System.nanoTime() / 1_000_000L
+            postOnAnimation(ease)
+        }
     }
 
-    /** Finger lifted: spring back flat. */
+    /** Finger lifted: spring back flat from wherever the tilt is now. */
     fun release() {
+        easing = false
+        removeCallbacks(ease)
         if (springBack) springFlat()
     }
 
