@@ -1,6 +1,8 @@
 package com.alfa.launcher
 
+import android.app.DownloadManager
 import android.content.Context
+import android.os.Environment
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -75,7 +77,62 @@ object Updater {
         }
     }
 
-    /** Opens the APK download in the browser; the user installs it from the download. */
+    // ---- in-app download via the system DownloadManager ----
+    // ALFA downloads the APK itself; the install is started from the system download
+    // (notification / Downloads app), so ALFA needs no "install other apps" permission.
+
+    enum class DlState { RUNNING, DONE, FAILED }
+    data class DlProgress(val state: DlState, val done: Long, val total: Long, val reason: String = "")
+
+    private const val APK_MIME = "application/vnd.android.package-archive"
+
+    fun enqueue(ctx: Context, rel: Release): Long {
+        val dm = ctx.getSystemService(DownloadManager::class.java) ?: return -1L
+        val name = "alfa-launcher-${rel.tag}.apk"
+        val req = DownloadManager.Request(Uri.parse(rel.apkUrl))
+            .setTitle("ALFA Launcher ${rel.tag}")
+            .setDescription("Tap to install the update")
+            .setMimeType(APK_MIME)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        if (Build.VERSION.SDK_INT >= 29) {
+            // public Downloads folder needs no storage permission on Android 10+
+            req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+        } else {
+            req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, name)
+        }
+        return dm.enqueue(req)
+    }
+
+    fun progress(ctx: Context, id: Long): DlProgress {
+        val dm = ctx.getSystemService(DownloadManager::class.java)
+            ?: return DlProgress(DlState.FAILED, 0, 0, "no download manager")
+        dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+            if (!c.moveToFirst()) return DlProgress(DlState.FAILED, 0, 0, "cancelled")
+            val status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            val done = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            return when (status) {
+                DownloadManager.STATUS_SUCCESSFUL -> DlProgress(DlState.DONE, total, total)
+                DownloadManager.STATUS_FAILED -> {
+                    val r = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                    DlProgress(DlState.FAILED, done, total, "code $r")
+                }
+                else -> DlProgress(DlState.RUNNING, done, total)
+            }
+        }
+        return DlProgress(DlState.FAILED, 0, 0, "query failed")
+    }
+
+    /** Shows the system Downloads list, where tapping the APK opens the installer. */
+    fun openDownloads(ctx: Context) {
+        try {
+            ctx.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // some ROMs have no Downloads UI; the completed-download notification still works
+        }
+    }
+
+    /** Fallback: opens the APK download in the browser. */
     fun downloadInBrowser(ctx: Context, rel: Release?) {
         val url = rel?.apkUrl ?: LATEST_APK
         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
