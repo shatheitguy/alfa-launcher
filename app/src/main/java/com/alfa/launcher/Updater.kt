@@ -123,6 +123,59 @@ object Updater {
         return DlProgress(DlState.FAILED, 0, 0, "query failed")
     }
 
+    // ---- self-install via PackageInstaller (needs "Install unknown apps" allowed for ALFA) ----
+
+    fun canSelfInstall(ctx: Context): Boolean =
+        Build.VERSION.SDK_INT < 26 || ctx.packageManager.canRequestPackageInstalls()
+
+    /** Opens the system screen where the user allows ALFA to install apps. */
+    fun requestInstallPermission(ctx: Context) {
+        ctx.startActivity(
+            Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
+    /**
+     * Blocking: streams the finished download into a PackageInstaller session and commits it.
+     * Android then shows its "Update this app?" confirmation (see [InstallReceiver]).
+     */
+    fun installDownloaded(ctx: Context, downloadId: Long) {
+        val dm = ctx.getSystemService(DownloadManager::class.java) ?: throw IOException("no download manager")
+        val installer = ctx.packageManager.packageInstaller
+        val params = android.content.pm.PackageInstaller.SessionParams(
+            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL
+        ).apply {
+            setAppPackageName(ctx.packageName)
+            if (Build.VERSION.SDK_INT >= 31) {
+                setRequireUserAction(android.content.pm.PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
+        }
+        val sessionId = installer.createSession(params)
+        val session = installer.openSession(sessionId)
+        try {
+            dm.openDownloadedFile(downloadId).use { pfd ->
+                java.io.FileInputStream(pfd.fileDescriptor).use { input ->
+                    session.openWrite("alfa-update.apk", 0, pfd.statSize).use { out ->
+                        input.copyTo(out, 64 * 1024)
+                        session.fsync(out)
+                    }
+                }
+            }
+            var flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            if (Build.VERSION.SDK_INT >= 31) flags = flags or android.app.PendingIntent.FLAG_MUTABLE
+            val pending = android.app.PendingIntent.getBroadcast(
+                ctx, sessionId, Intent(ctx, InstallReceiver::class.java).setPackage(ctx.packageName), flags
+            )
+            session.commit(pending.intentSender)
+        } catch (e: Exception) {
+            session.abandon()
+            throw e
+        } finally {
+            session.close()
+        }
+    }
+
     /** Shows the system Downloads list, where tapping the APK opens the installer. */
     fun openDownloads(ctx: Context) {
         try {

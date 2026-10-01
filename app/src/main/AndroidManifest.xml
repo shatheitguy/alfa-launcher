@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- self-update: ALFA installs its own new versions (user confirms each one) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -50,6 +52,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".InstallReceiver"
+            android:exported="false" />
 
         <activity
             android:name=".SettingsActivity"
