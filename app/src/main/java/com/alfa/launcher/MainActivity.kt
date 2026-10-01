@@ -220,14 +220,15 @@ class MainActivity : Activity() {
             galaxyView.setDepth(tx, ty)
             galaxyReset.visibility = if (kotlin.math.abs(z - 1f) > 0.02f) View.VISIBLE else View.GONE
         }
-        galaxyStage.onRelease = { x, y, vx, vy -> galaxyView.rollFrom(x, y, vx, vy) }
+        galaxyView.onDragTilt = { dx, dy -> galaxyStage.tiltBy(dx, dy) }
+        galaxyView.onDragEnd = { galaxyStage.release() }
         galaxyReset.setOnClickListener { galaxyStage.reset(true) }
         findViewById<TextView>(R.id.galaxyMode).setOnClickListener {
             val tilt3d = !prefs.getBoolean("galaxy_3d", true)
             prefs.edit().putBoolean("galaxy_3d", tilt3d).apply()
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
+            if (prefs.getBoolean("haptics", true)) it.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
             applyGalaxyMode()
-            toast(if (tilt3d) "3D mode: hold and move to tilt, let go to roll" else "Spin mode: circle to spin, swipe for pages")
+            toast(if (tilt3d) "3D tilt on: the orbit tilts while you drag" else "3D tilt off: flat spin")
         }
 
         accent = accentOf(this)
@@ -297,6 +298,7 @@ class MainActivity : Activity() {
         applyAccent()
         applyBackground()
         applySpin()
+        applyHaptics()
         loadApps()
     }
 
@@ -534,11 +536,8 @@ class MainActivity : Activity() {
         }
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
-            when {
-                prefs.getBoolean("galaxy_3d", true) -> "${allApps.size} APPS  ·  HOLD + MOVE = 3D  ·  FLICK = ROLL  ·  PINCH = ZOOM"
-                prefs.getBoolean("spin", true) -> "${allApps.size} APPS  ·  SPIN  ·  SWIPE ↔  ·  PINCH = ZOOM"
-                else -> "${allApps.size} APPS  ·  SWIPE ↔ PAGES  ·  PINCH = ZOOM"
-            }
+            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  CIRCLE = SPIN  ·  SWIPE = PAGE  ·  PINCH = ZOOM"
+            else "${allApps.size} APPS  ·  SWIPE = PAGE  ·  PINCH = ZOOM"
         } else {
             "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"
         }
@@ -675,6 +674,8 @@ class MainActivity : Activity() {
         val driftOn = prefs.getBoolean("drift", false)
         menu.menu.add(0, 9, 2, if (spinOn) "Orbit spin: ON  (tap to turn off)" else "Orbit spin: OFF  (tap to turn on)")
         menu.menu.add(0, 10, 2, if (driftOn) "Idle drift: ON" else "Idle drift: OFF")
+        val hapticsOn = prefs.getBoolean("haptics", true)
+        menu.menu.add(0, 12, 2, if (hapticsOn) "Vibration: ON  (tap to turn off)" else "Vibration: OFF  (tap to turn on)")
         menu.menu.add(0, 11, 1, "Profile (name & logo)")
         menu.menu.add(0, 4, 3, "IT tools")
         menu.menu.add(0, 7, 4, "Check for updates")
@@ -695,6 +696,11 @@ class MainActivity : Activity() {
                 6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
                 7 -> openTool(ToolsActivity.TOOL_UPDATE)
                 11 -> showProfileDialog()
+                12 -> {
+                    prefs.edit().putBoolean("haptics", !hapticsOn).apply()
+                    applyHaptics()
+                    toast(if (!hapticsOn) "Vibration on" else "Vibration off")
+                }
                 9 -> {
                     prefs.edit().putBoolean("spin", !spinOn).apply()
                     applySpin()
@@ -868,12 +874,22 @@ class MainActivity : Activity() {
     /** One-finger behaviour in All Apps: 3D tilt (default) or spin / swipe pages. */
     private fun applyGalaxyMode() {
         val tilt3d = prefs.getBoolean("galaxy_3d", true)
-        galaxyStage.oneFingerTilt = tilt3d
+        // one-finger gestures are handled by the orbit itself (spin + live tilt + page swipe);
+        // the stage only does two-finger pinch zoom
+        galaxyStage.oneFingerTilt = false
+        galaxyView.tiltOnDrag = tilt3d
         findViewById<TextView>(R.id.galaxyMode).apply {
-            text = if (tilt3d) "⬡ 3D" else "◎ SPIN"
-            setTextColor(accent)
+            text = if (tilt3d) "⬡ 3D ON" else "⬡ 3D OFF"
+            setTextColor(if (tilt3d) accent else Color.argb(150, 255, 255, 255))
         }
         filterApps(false) // refresh the hint line
+    }
+
+    private fun applyHaptics() {
+        val on = prefs.getBoolean("haptics", true)
+        orbit.spinner.haptics = on
+        galaxyView.spinner.haptics = on
+        galaxyView.haptics = on
     }
 
     private fun applyBackground() {

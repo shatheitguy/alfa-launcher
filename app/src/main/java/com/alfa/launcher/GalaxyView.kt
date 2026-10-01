@@ -188,7 +188,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
 
     private fun goTo(target: Int, dir: Int) {
         if (pages <= 1) return
-        performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        if (haptics) performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         val t = (target + pages) % pages
         anim?.cancel()
         val out = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -251,7 +251,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                 slot.contentDescription = app.label
                 slot.setOnClickListener { onAppClick(app) }
                 slot.setOnLongClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    if (haptics) it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     onAppLongClick(it, app); true
                 }
             }
@@ -405,15 +405,65 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         stroke.strokeCap = Paint.Cap.BUTT
     }
 
-    // ---------- touch: circle = spin, straight left/right = page ----------
+    // ---------- touch ----------
+    // One finger, one gesture: while moving, the rings spin with the finger and (if
+    // [tiltOnDrag]) the stage tilts in 3D. On release: a curved path around the centre
+    // keeps rolling; any other swipe (straight, any direction) changes page.
+    // Tracking uses SCREEN coordinates so the 3D tilt can't distort the finger path.
+
+    /** Tilt the 3D stage while dragging. */
+    var tiltOnDrag = true
+    var onDragTilt: (dx: Float, dy: Float) -> Unit = { _, _ -> }
+    var onDragEnd: () -> Unit = {}
+    /** Vibration on page change / long-press (spin ticks are [Spinner.haptics]). */
+    var haptics = true
+
+    private val loc = IntArray(2)
+    private var ocx = 0f            // orbit centre on screen
+    private var ocy = 0f
+    private var rawDownX = 0f
+    private var rawDownY = 0f
+    private var lastRawX = 0f
+    private var lastRawY = 0f
+    private var active = false      // finger moved past the touch slop
 
     private fun overHub(x: Float, y: Float) = hypot(x - cx, y - cy) < hubR
 
     private fun record(ev: MotionEvent) {
-        if (path.size < 400) { path.add(ev.x); path.add(ev.y) }
+        if (path.size < 600) { path.add(ev.rawX); path.add(ev.rawY) }
     }
 
-    /** 1 = next page, -1 = previous page, 0 = it was a spin. */
+    private fun beginTrack(ev: MotionEvent) {
+        val p = parent as? View ?: this
+        p.getLocationOnScreen(loc)
+        ocx = loc[0] + cx
+        ocy = loc[1] + cy
+        rawDownX = ev.rawX
+        rawDownY = ev.rawY
+        lastRawX = ev.rawX
+        lastRawY = ev.rawY
+        path.clear()
+        record(ev)
+        spinner.minRadius = hubR * 1.4f
+        spinner.onDown(ev.rawX, ev.rawY, ev.eventTime, ocx, ocy)
+        active = false
+        spinTracking = true
+    }
+
+    private fun maybeStart(ev: MotionEvent): Boolean {
+        if (!active && hypot(ev.rawX - rawDownX, ev.rawY - rawDownY) > slop) {
+            active = true
+            lastRawX = ev.rawX
+            lastRawY = ev.rawY
+        }
+        if (active && spinner.enabled) spinner.checkStart(ev.rawX, ev.rawY, ev.eventTime, ocx, ocy)
+        return active
+    }
+
+    /**
+     * 1 = next page, -1 = previous page, 0 = it was a spin (or too short).
+     * A page swipe is long and nearly straight in any direction; a spin curves around the orbit.
+     */
     private fun pageSwipe(): Int {
         if (path.size < 4) return 0
         val x0 = path[0]
@@ -421,7 +471,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         val dx = path[path.size - 2] - x0
         val dy = path[path.size - 1] - y0
         val len = hypot(dx, dy)
-        if (abs(dx) < width * 0.3f || abs(dx) < abs(dy) * 2f || len == 0f) return 0
+        if (len < min(width, height) * 0.22f) return 0
         var maxDev = 0f
         var i = 2
         while (i < path.size) {
@@ -429,85 +479,55 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             if (dev > maxDev) maxDev = dev
             i += 2
         }
-        if (maxDev > len * 0.07f) return 0
-        return if (dx < 0) 1 else -1
+        if (maxDev > len * 0.12f) return 0
+        return if (abs(dx) >= abs(dy)) { if (dx < 0) 1 else -1 } else { if (dy < 0) 1 else -1 }
+    }
+
+    private fun endTrack() {
+        if (active) onDragEnd()
+        active = false
+        spinTracking = false
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        if (spinner.enabled) {
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    spinTracking = !overHub(ev.x, ev.y)
-                    if (spinTracking) {
-                        spinner.onDown(ev, cx, cy)
-                        path.clear()
-                        record(ev)
-                    }
-                }
-                MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
-                    record(ev)
-                    return spinner.checkStart(ev, cx, cy)
-                }
-            }
-            return false
-        }
         when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y; swiping = false }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = ev.x - downX
-                if (abs(dx) > slop * 2 && abs(dx) > abs(ev.y - downY)) {
-                    swiping = true
-                    return true
-                }
+            MotionEvent.ACTION_DOWN -> if (!overHub(ev.x, ev.y)) beginTrack(ev) else spinTracking = false
+            MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
+                record(ev)
+                return maybeStart(ev)
             }
         }
         return false
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
-        if (spinner.enabled) {
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    spinTracking = true
-                    spinner.onDown(ev, cx, cy)
-                    path.clear()
-                    record(ev)
-                }
-                MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
-                    record(ev)
-                    spinner.checkStart(ev, cx, cy)
-                    spinner.onMove(ev, cx, cy)
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (spinTracking) {
-                        record(ev)
-                        when (pageSwipe()) {
-                            1 -> { spinner.endWithoutFling(); next() }
-                            -1 -> { spinner.endWithoutFling(); prev() }
-                            else -> spinner.onUp()
-                        }
-                    }
-                    spinTracking = false
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    // usually a second finger: the 3D stage takes over
-                    spinner.endWithoutFling()
-                    spinTracking = false
-                }
-            }
-            return true
-        }
         when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y; swiping = false }
-            MotionEvent.ACTION_MOVE -> {
-                if (abs(ev.x - downX) > slop * 2 && abs(ev.x - downX) > abs(ev.y - downY)) swiping = true
+            MotionEvent.ACTION_DOWN -> beginTrack(ev)
+            MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
+                record(ev)
+                if (maybeStart(ev)) {
+                    if (spinner.enabled) spinner.onMove(ev.rawX, ev.rawY, ev.eventTime, ocx, ocy)
+                    if (tiltOnDrag) onDragTilt(ev.rawX - lastRawX, ev.rawY - lastRawY)
+                    lastRawX = ev.rawX
+                    lastRawY = ev.rawY
+                }
             }
             MotionEvent.ACTION_UP -> {
-                val dx = ev.x - downX
-                if (swiping && abs(dx) > slop * 4) { if (dx < 0) next() else prev() }
-                swiping = false
+                if (spinTracking && active) {
+                    record(ev)
+                    when (pageSwipe()) {
+                        1 -> { spinner.endWithoutFling(); next() }
+                        -1 -> { spinner.endWithoutFling(); prev() }
+                        else -> if (spinner.enabled) spinner.onUp() else spinner.endWithoutFling()
+                    }
+                }
+                endTrack()
             }
-            MotionEvent.ACTION_CANCEL -> swiping = false
+            MotionEvent.ACTION_CANCEL -> {
+                // usually a second finger: the 3D stage takes over for pinch
+                spinner.endWithoutFling()
+                endTrack()
+            }
         }
         return true
     }

@@ -10,8 +10,9 @@ import kotlin.math.floor
 import kotlin.math.hypot
 
 /**
- * Turns a circular drag into a rotation angle, with fling momentum and a light
+ * Turns a circular drag into a rotation angle, with fling momentum and an optional
  * haptic tick every [tickDeg] degrees. The host redraws in [onSpin].
+ * Positions can be given in any coordinate space as long as the centre uses the same one.
  */
 class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
 
@@ -63,41 +64,58 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
         host.removeCallbacks(fling)
     }
 
-    fun onDown(ev: MotionEvent, cx: Float, cy: Float) {
+    // ----- coordinate-based API -----
+
+    fun onDown(x: Float, y: Float, time: Long, cx: Float, cy: Float) {
         stop()
-        downX = ev.x
-        downY = ev.y
-        lastA = angleAt(ev.x, ev.y, cx, cy)
-        lastT = ev.eventTime
+        downX = x
+        downY = y
+        lastA = angleAt(x, y, cx, cy)
+        lastT = time
         velocity = 0f
         dragging = false
     }
 
     /** True once the finger has moved far enough to start spinning. */
-    fun checkStart(ev: MotionEvent, cx: Float, cy: Float): Boolean {
+    fun checkStart(x: Float, y: Float, time: Long, cx: Float, cy: Float): Boolean {
         if (!enabled || dragging) return dragging
-        if (hypot(ev.x - downX, ev.y - downY) > slop) {
+        if (hypot(x - downX, y - downY) > slop) {
             dragging = true
-            lastA = angleAt(ev.x, ev.y, cx, cy)
-            lastT = ev.eventTime
+            lastA = angleAt(x, y, cx, cy)
+            lastT = time
         }
         return dragging
     }
 
-    fun onMove(ev: MotionEvent, cx: Float, cy: Float) {
+    /** Ignore rotation while the finger is this close to the centre (angles jump wildly there). */
+    var minRadius = 0f
+
+    fun onMove(x: Float, y: Float, time: Long, cx: Float, cy: Float) {
         if (!dragging) return
-        val a = angleAt(ev.x, ev.y, cx, cy)
+        val a = angleAt(x, y, cx, cy)
         var da = a - lastA
         if (da > 180f) da -= 360f
         if (da < -180f) da += 360f
-        val dt = (ev.eventTime - lastT).coerceAtLeast(1L)
+        if (hypot(x - cx, y - cy) < minRadius) {
+            lastA = a
+            lastT = time
+            velocity *= 0.5f
+            return
+        }
+        val dt = (time - lastT).coerceAtLeast(1L)
         velocity = 0.6f * velocity + 0.4f * (da / dt)
         lastA = a
-        lastT = ev.eventTime
+        lastT = time
         add(da)
     }
 
-    /** Start a momentum spin from outside (e.g. a released 3D drag). [degPerMs] signed. */
+    // ----- MotionEvent conveniences (view-local coordinates) -----
+
+    fun onDown(ev: MotionEvent, cx: Float, cy: Float) = onDown(ev.x, ev.y, ev.eventTime, cx, cy)
+    fun checkStart(ev: MotionEvent, cx: Float, cy: Float) = checkStart(ev.x, ev.y, ev.eventTime, cx, cy)
+    fun onMove(ev: MotionEvent, cx: Float, cy: Float) = onMove(ev.x, ev.y, ev.eventTime, cx, cy)
+
+    /** Start a momentum spin from outside. [degPerMs] signed. */
     fun flingWith(degPerMs: Float) {
         if (abs(degPerMs) < 0.02f) return
         stop()
