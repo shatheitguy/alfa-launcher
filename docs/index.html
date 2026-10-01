@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALFA OS Launcher</title>
+<meta name="description" content="ALFA OS — a sci-fi Android home screen for IT people. Orbit dial, 3D All Apps orbit, neon icons and a built-in IT toolkit. Free and open source (MIT).">
+<meta name="theme-color" content="#07070a">
+<meta property="og:title" content="ALFA OS Launcher">
+<meta property="og:description" content="A sci-fi Android home screen with a built-in IT toolkit. Free & open source.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Crect width='108' height='108' rx='24' fill='%230b0e14'/%3E%3Cpath d='M38 71 54 37 70 71' fill='none' stroke='%23fff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='54' cy='56' r='4.5' fill='%23ff2d3d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07070a; --bg2:#0d0d12; --card:rgba(18,18,24,.72); --line:rgba(255,255,255,.08);
+  --text:#f2f2f5; --text2:rgba(242,242,245,.66); --text3:rgba(242,242,245,.42);
+  --accent:#ff2d3d; --accent-soft:rgba(255,45,61,.16); --accent-glow:rgba(255,45,61,.35);
+  --radius:22px; --mono:'JetBrains Mono',ui-monospace,monospace; --sans:'Space Grotesk',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--sans); line-height:1.55;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+/* carbon + glow backdrop */
+body::before{
+  content:""; position:fixed; inset:0; z-index:-2;
+  background:
+    radial-gradient(900px 600px at 85% -10%, var(--accent-glow), transparent 60%),
+    radial-gradient(800px 600px at -10% 110%, rgba(255,45,61,.18), transparent 60%),
+    repeating-conic-gradient(rgba(255,255,255,.035) 0 25%, transparent 0 50%) 0 0/8px 8px,
+    linear-gradient(#101014, #050507);
+}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+.mono{font-family:var(--mono)}
+.tag{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:rgba(7,7,10,.62);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:28px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.04em}
+.brand svg{width:30px;height:30px}
+.brand small{font-family:var(--mono);font-weight:400;color:var(--text3);font-size:11px;letter-spacing:.18em}
+nav .links{margin-left:auto;display:flex;gap:24px;font-size:14px;color:var(--text2)}
+nav .links a:hover{color:var(--text)}
+nav .gh{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;font-size:13px}
+nav .gh:hover{border-color:var(--accent)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:56px;align-items:center;padding:84px 0 72px}
+.hero h1{font-size:clamp(40px,6vw,72px);font-weight:300;line-height:1.02;letter-spacing:-.02em;margin:18px 0 20px}
+.hero h1 b{font-weight:600;color:var(--accent)}
+.hero p.lead{font-size:19px;color:var(--text2);max-width:540px}
+.cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:15px 24px;border-radius:999px;font-weight:500;font-size:16px;transition:transform .15s ease, box-shadow .2s ease, border-color .2s}
+.btn.primary{background:var(--accent);color:#09090b;box-shadow:0 10px 40px -10px var(--accent-glow)}
+.btn.primary:hover{transform:translateY(-2px);box-shadow:0 16px 50px -10px var(--accent-glow)}
+.btn.ghost{border:1px solid var(--line);background:rgba(255,255,255,.03)}
+.btn.ghost:hover{border-color:rgba(255,255,255,.3)}
+.btn svg{width:18px;height:18px}
+.meta{margin-top:22px;display:flex;flex-wrap:wrap;gap:18px;font-family:var(--mono);font-size:12px;color:var(--text3);letter-spacing:.06em}
+.meta span::before{content:"\25CF";color:var(--accent);margin-right:8px}
+
+/* phone mock */
+.phone{position:relative;width:min(340px,100%);aspect-ratio:9/19;margin:0 auto;border-radius:44px;padding:14px;
+  background:linear-gradient(145deg,#1a1a20,#08080b);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 40px 120px -30px var(--accent-glow),inset 0 0 0 2px #000}
+.screen{position:relative;height:100%;border-radius:32px;overflow:hidden;padding:26px 18px 16px;display:flex;flex-direction:column;
+  background:
+    radial-gradient(260px 220px at 90% 8%, rgba(255,45,61,.30), transparent 70%),
+    radial-gradient(260px 240px at 0% 100%, rgba(255,45,61,.18), transparent 70%),
+    repeating-conic-gradient(rgba(255,255,255,.04) 0 25%, transparent 0 50%) 0 0/6px 6px,
+    linear-gradient(#111116,#050507)}
+.s-top{display:flex;align-items:center;gap:10px}
+.s-av{width:34px;height:34px;border-radius:50%;border:2px solid var(--accent);display:grid;place-items:center;font-size:13px;color:var(--accent);background:#0c0c10}
+.s-hi{font-family:var(--mono);font-size:8px;letter-spacing:.2em;color:var(--accent)}
+.s-name{font-size:13px;font-weight:500}
+.s-gear{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:13px;color:var(--text2)}
+.s-clock{font-size:46px;font-weight:300;letter-spacing:-.02em;margin-top:10px;line-height:1}
+.s-date{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;color:var(--text2);margin-top:4px}
+.s-net{font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:8px;letter-spacing:.08em}
+.s-net::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px}
+.s-orbit{flex:1;display:grid;place-items:center;min-height:0}
+.s-orbit svg{width:100%;max-height:100%}
+.s-pill{height:30px;border-radius:999px;border:1px solid var(--line);background:rgba(16,20,24,.55);display:flex;align-items:center;padding:0 12px;
+  font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--text2);margin-top:7px}
+.s-pill b{color:var(--accent);font-weight:500;margin-right:8px}
+.s-pill i{margin-left:auto;font-style:normal;color:var(--text3)}
+.s-dock{height:46px;border-radius:20px;border:1px solid var(--line);background:rgba(16,20,24,.55);margin-top:8px;display:flex;align-items:center;justify-content:space-around}
+.s-dock span{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--accent);background:radial-gradient(circle at 50% 30%,#2a2a32,#0b0b0e)}
+
+/* orbit animation */
+.spin{transform-box:view-box;transform-origin:200px 200px;animation:spin 48s linear infinite}
+.spin.rev{animation-duration:24s;animation-direction:reverse}
+.apps{transform-box:view-box;transform-origin:200px 200px;animation:spin 36s linear infinite}
+.apps .app{transform-box:fill-box;transform-origin:center;animation:spin 36s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin,.apps,.apps .app{animation:none}}
+
+/* sections */
+section{padding:84px 0}
+.head{max-width:680px;margin-bottom:44px}
+.head h2{font-size:clamp(30px,4vw,44px);font-weight:400;letter-spacing:-.015em;margin-top:12px;line-height:1.1}
+.head p{color:var(--text2);margin-top:14px;font-size:17px}
+
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .2s, transform .2s}
+.card:hover{border-color:rgba(255,45,61,.45);transform:translateY(-3px)}
+.card .ico{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--accent);
+  color:var(--accent);background:radial-gradient(circle at 50% 30%,#26262e,#0b0b0e);font-size:18px;margin-bottom:18px}
+.card h3{font-size:19px;font-weight:500;margin-bottom:8px}
+.card p{color:var(--text2);font-size:15px}
+.card .n{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.12em}
+
+/* tools */
+.tools{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.tool{display:flex;gap:16px;align-items:flex-start;padding:18px 20px;border:1px solid var(--line);border-radius:16px;background:rgba(14,14,19,.66)}
+.tool .n{font-family:var(--mono);font-size:12px;color:var(--accent);padding-top:3px;min-width:22px}
+.tool h4{font-size:16px;font-weight:500}
+.tool p{font-size:14px;color:var(--text2)}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:s}
+.step{position:relative;padding:28px 26px 26px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
+.step::before{counter-increment:s;content:"0" counter(s);font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--accent)}
+.step h3{font-size:19px;font-weight:500;margin:12px 0 8px}
+.step p{color:var(--text2);font-size:15px}
+.note{margin-top:22px;padding:18px 22px;border-radius:16px;border:1px solid rgba(255,181,71,.25);background:rgba(255,181,71,.06);color:var(--text2);font-size:14.5px}
+.note b{color:#ffb547;font-weight:500}
+
+/* big download band */
+.band{margin:20px 0 0;padding:56px;border-radius:30px;border:1px solid var(--line);text-align:center;
+  background:radial-gradient(600px 300px at 50% 0%, var(--accent-soft), transparent 70%), rgba(14,14,19,.7)}
+.band h2{font-size:clamp(30px,4vw,46px);font-weight:300;letter-spacing:-.015em}
+.band p{color:var(--text2);margin:12px auto 28px;max-width:560px}
+.band .cta{justify-content:center;margin-top:0}
+
+footer{border-top:1px solid var(--line);margin-top:84px;padding:36px 0 48px;color:var(--text3);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
+footer .right{margin-left:auto;display:flex;gap:22px}
+footer a:hover{color:var(--text)}
+
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr;padding-top:56px;gap:48px}
+  .grid,.steps{grid-template-columns:1fr 1fr}
+  nav .links{display:none}
+}
+@media (max-width:620px){
+  .wrap{padding:0 16px}
+  .grid,.steps,.tools{grid-template-columns:1fr}
+  section{padding:64px 0}
+  .band{padding:36px 22px}
+  nav .gh span{display:none}
+  footer .right{margin-left:0}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 108 108" aria-hidden="true"><rect width="108" height="108" rx="26" fill="#0b0e14" stroke="rgba(255,255,255,.12)"/><path d="M38 71 54 37 70 71" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="54" cy="56" r="4.5" fill="#ff2d3d"/></svg>
+      ALFA&nbsp;OS <small>LAUNCHER</small>
+    </a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#tools">IT Tools</a>
+      <a href="#install">Install</a>
+    </div>
+    <a class="gh" href="https://github.com/shatheitguy/alfa-launcher" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <div>
+    <div class="tag">Android home screen · Open source</div>
+    <h1>The launcher built for the <b>IT guy</b>.</h1>
+    <p class="lead">ALFA OS replaces your stock Android home screen with an orbit dial, a 3D All Apps orbit, glowing neon icons, and a built-in IT toolkit: ping, ports, DNS, subnet and more.</p>
+    <div class="cta">
+      <a class="btn primary" id="dl" href="https://github.com/shatheitguy/alfa-launcher/releases/latest/download/alfa-launcher.apk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        Download APK <span class="mono" id="ver" style="font-size:13px;opacity:.75"></span>
+      </a>
+      <a class="btn ghost" href="https://github.com/shatheitguy/alfa-launcher" target="_blank" rel="noopener">View source</a>
+    </div>
+    <div class="meta"><span>Android 8.0+</span><span>~1.6 MB</span><span>MIT licence</span><span>No ads · no tracking</span></div>
+  </div>
+
+  <div class="phone" aria-label="ALFA home screen preview">
+    <div class="screen">
+      <div class="s-top">
+        <div class="s-av">S</div>
+        <div><div class="s-hi">GOOD EVENING</div><div class="s-name">Sha</div></div>
+        <div class="s-gear">&#9881;</div>
+      </div>
+      <div class="s-clock" id="clock">21:41</div>
+      <div class="s-date" id="date">WED · 01 OCT 2026</div>
+      <div class="s-net">WI-FI · 192.168.1.23 · TAP FOR NETWORK INFO</div>
+      <div class="s-orbit">
+        <svg viewBox="0 0 400 400" aria-hidden="true">
+          <defs>
+            <radialGradient id="glow"><stop offset="0" stop-color="#ff2d3d" stop-opacity=".28"/><stop offset="1" stop-color="#ff2d3d" stop-opacity="0"/></radialGradient>
+            <radialGradient id="orb" cx="50%" cy="30%"><stop offset="0" stop-color="#2c2c34"/><stop offset="1" stop-color="#0a0a0d"/></radialGradient>
+          </defs>
+          <circle cx="200" cy="200" r="196" fill="url(#glow)"/>
+          <circle cx="200" cy="200" r="188" fill="none" stroke="rgba(255,255,255,.18)"/>
+          <g class="spin" id="ticks"></g>
+          <!-- RAM / storage arcs -->
+          <path d="M 45.9 92.2 A 188 188 0 0 0 45.9 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 45.9 307.8 A 188 188 0 0 1 16 220" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 354.1 92.2 A 188 188 0 0 1 354.1 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 354.1 307.8 A 188 188 0 0 0 380 250" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
+          <text x="46" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">RAM</text>
+          <text x="46" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">52%</text>
+          <text x="354" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">STO</text>
+          <text x="354" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">34%</text>
+          <g class="apps" id="apps"></g>
+          <circle class="spin rev" cx="200" cy="200" r="78" fill="none" stroke="rgba(255,45,61,.55)" stroke-width="1.5" stroke-dasharray="3 8"/>
+          <circle cx="200" cy="200" r="70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
+          <circle cx="200" cy="200" r="70" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round" stroke-dasharray="383 440" transform="rotate(-90 200 200)"/>
+          <circle cx="200" cy="200" r="64" fill="url(#orb)" stroke="rgba(255,255,255,.2)"/>
+          <text x="200" y="205" fill="#fff" font-family="Space Grotesk" font-weight="300" font-size="38" text-anchor="middle">87%</text>
+          <text x="200" y="226" fill="rgba(255,255,255,.65)" font-family="JetBrains Mono" font-size="9" letter-spacing="3" text-anchor="middle">BATTERY</text>
+        </svg>
+      </div>
+      <div class="s-pill"><b>&#8984; IT TOOLS</b> PING · NETWORK · PORTS <i>+7 &rsaquo;</i></div>
+      <div class="s-pill">&#9906;&nbsp; Search apps <i>ALL APPS &#9678;</i></div>
+      <div class="s-dock"><span></span><span></span><span></span><span></span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="features">
+  <div class="wrap">
+    <div class="head">
+      <div class="tag">Features</div>
+      <h2>A home screen that looks like mission control.</h2>
+      <p>Everything is built around one idea: your apps in orbit, with system telemetry always in view.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="ico">&#9678;</div><h3>Orbit dial</h3><p>Eight favourite apps orbit a hub showing battery, with RAM and storage gauges on the ring. Drag around it to spin, and flick for momentum.</p></div>
+      <div class="card"><div class="ico">&#11041;</div><h3>3D All Apps orbit</h3><p>Tap the centre: every app on three rings. Drag to spin and tilt in 3D, swipe for pages, pinch to zoom.</p></div>
+      <div class="card"><div class="ico">&#10022;</div><h3>Neon icons</h3><p>Every icon is redrawn as a glass orb with a glowing glyph in your accent colour, or as a colour orb. You can also keep the originals.</p></div>
+      <div class="card"><div class="ico">&#9673;</div><h3>Your profile</h3><p>Your name, logo and a time-aware greeting right next to the clock.</p></div>
+      <div class="card"><div class="ico">&#8984;</div><h3>IT Tools built in</h3><p>Ten tools one tap away from home: network info, ping, DNS, port check, subnet calculator and more.</p></div>
+      <div class="card"><div class="ico">&#9881;</div><h3>ALFA OS Settings</h3><p>One tidy settings screen for profile, appearance, motion, home layout, updates and system.</p></div>
+      <div class="card"><div class="ico">2</div><h3>Dual &amp; work apps</h3><p>Cloned apps (a second WhatsApp) and work-profile apps appear too, marked with a badge.</p></div>
+      <div class="card"><div class="ico">&#8635;</div><h3>Self-updating</h3><p>ALFA checks GitHub Releases, downloads the new build and installs it. You just confirm.</p></div>
+      <div class="card"><div class="ico">&#9673;</div><h3>Six accents</h3><p>Crimson, Ice blue, Mint, Amber, Violet or Mono. The whole OS, including icons, re-themes instantly.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="wrap">
+    <div class="head">
+      <div class="tag">IT Tools</div>
+      <h2>Your pocket toolkit.</h2>
+      <p>Grouped under one button on the home screen. Each tool runs in its own window, so it stays open in Recents while you switch apps.</p>
+    </div>
+    <div class="tools">
+      <div class="tool"><div class="n">01</div><div><h4>Network info</h4><p>Transport, interface, IPv4/IPv6, gateway, DNS, private DNS, MTU, signal, public IP.</p></div></div>
+      <div class="tool"><div class="n">02</div><div><h4>Ping</h4><p>ICMP echo to any host with live output; one-tap Google DNS, Cloudflare and gateway.</p></div></div>
+      <div class="tool"><div class="n">03</div><div><h4>DNS lookup</h4><p>A / AAAA records, reverse PTR and lookup timing.</p></div></div>
+      <div class="tool"><div class="n">04</div><div><h4>Port check</h4><p>TCP connect check on a single host you own or are authorised to test, with service names.</p></div></div>
+      <div class="tool"><div class="n">05</div><div><h4>Subnet calc</h4><p>Network, broadcast, mask, wildcard, host range, class and address type.</p></div></div>
+      <div class="tool"><div class="n">06</div><div><h4>Device info</h4><p>SoC, CPU, RAM, storage, display, battery health, kernel, security patch.</p></div></div>
+      <div class="tool"><div class="n">07</div><div><h4>Hash / Base64</h4><p>MD5, SHA-1, SHA-256, SHA-512, CRC32, Base64 encode and decode.</p></div></div>
+      <div class="tool"><div class="n">08</div><div><h4>Password generator</h4><p>Secure random passwords with an entropy estimate; tap to copy.</p></div></div>
+      <div class="tool"><div class="n">09</div><div><h4>System panels</h4><p>Jump straight to Wi-Fi, VPN, developer options, default apps, usage access and more.</p></div></div>
+      <div class="tool"><div class="n">10</div><div><h4>App update</h4><p>Check, download and install the latest ALFA build from GitHub.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="head">
+      <div class="tag">Install</div>
+      <h2>Up and running in a minute.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Download</h3><p>Grab <span class="mono">alfa-launcher.apk</span> on your phone and allow your browser to install apps when Android asks.</p></div>
+      <div class="step"><h3>Set as home</h3><p>Open ALFA and tap <b>Set as default</b>. Pressing Home now brings you to ALFA instead of the stock launcher.</p></div>
+      <div class="step"><h3>Make it yours</h3><p>Tap &#9881; to add your name and logo, pick an accent and icon style, and arrange your orbit and dock.</p></div>
+    </div>
+    <div class="note"><b>Heads-up:</b> because ALFA is installed from outside the Play Store, Google Play Protect may show a warning for an unrecognised app. ALFA is open source, so you can read every line on GitHub. Tap <i>More details → Install anyway</i> to continue.</div>
+
+    <div class="band">
+      <h2>Make your phone an ALFA.</h2>
+      <p>Free, open source, no ads, no tracking. Updates come straight from GitHub.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/shatheitguy/alfa-launcher/releases/latest/download/alfa-launcher.apk">Download the latest APK</a>
+        <a class="btn ghost" href="https://github.com/shatheitguy/alfa-launcher/releases" target="_blank" rel="noopener">All releases</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>&copy; 2026 shatheitguy · ALFA OS Launcher · <a href="https://github.com/shatheitguy/alfa-launcher/blob/main/LICENSE">MIT licence</a></div>
+    <div class="right">
+      <a href="https://github.com/shatheitguy/alfa-launcher">Source</a>
+      <a href="https://github.com/shatheitguy/alfa-launcher/releases">Releases</a>
+      <a href="https://github.com/shatheitguy/alfa-launcher/issues">Report an issue</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// tick ring + orbiting app orbs for the preview
+(function(){
+  var ns = "http://www.w3.org/2000/svg";
+  var ticks = document.getElementById("ticks");
+  for (var i = 0; i < 90; i++) {
+    var major = i % 15 === 0;
+    var l = document.createElementNS(ns, "line");
+    l.setAttribute("x1", 200); l.setAttribute("x2", 200);
+    l.setAttribute("y1", 15); l.setAttribute("y2", major ? 26 : 20);
+    l.setAttribute("stroke", major ? "#ff2d3d" : "rgba(255,255,255,.25)");
+    l.setAttribute("stroke-width", major ? 2.5 : 1.2);
+    l.setAttribute("transform", "rotate(" + (i * 4) + " 200 200)");
+    ticks.appendChild(l);
+  }
+  // simple glyphs: settings, photos, mail, maps, calendar, clock, store, chat
+  var glyphs = [
+    '<circle r="6" fill="none" stroke-width="2.2"/><circle r="1.8"/>',
+    '<path d="M-7 5 -2 -2 2 3 4 0 7 5Z"/><circle cx="4" cy="-4" r="1.8"/>',
+    '<rect x="-7" y="-5" width="14" height="10" rx="1.5" fill="none" stroke-width="2"/><path d="M-7 -4 0 1 7 -4" fill="none" stroke-width="2"/>',
+    '<path d="M0 -8C-4 -8 -6 -5 -6 -2 -6 3 0 8 0 8S6 3 6 -2C6 -5 4 -8 0 -8Z" fill="none" stroke-width="2"/><circle cy="-2" r="2"/>',
+    '<rect x="-7" y="-6" width="14" height="13" rx="2" fill="none" stroke-width="2"/><path d="M-7 -2H7" stroke-width="2"/>',
+    '<circle r="7" fill="none" stroke-width="2"/><path d="M0 -4V0L3 2" fill="none" stroke-width="2" stroke-linecap="round"/>',
+    '<path d="M-6 -2H6L5 7H-5Z" fill="none" stroke-width="2"/><path d="M-3 -2V-4A3 3 0 0 1 3 -4V-2" fill="none" stroke-width="2"/>',
+    '<path d="M-7 -5H7V4H-1L-5 7V4H-7Z" fill="none" stroke-width="2" stroke-linejoin="round"/>'
+  ];
+  var apps = document.getElementById("apps");
+  var n = glyphs.length, R = 132;
+  for (var k = 0; k < n; k++) {
+    var a = (-90 + (k + 0.5) * 360 / n) * Math.PI / 180;
+    var x = 200 + R * Math.cos(a), y = 200 + R * Math.sin(a);
+    var g = document.createElementNS(ns, "g");
+    g.setAttribute("class", "app");
+    g.innerHTML =
+      '<g transform="translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ')">' +
+      '<circle r="25" fill="url(#orb)" stroke="#ff2d3d" stroke-width="2.2"/>' +
+      '<circle r="21" fill="none" stroke="rgba(255,255,255,.12)"/>' +
+      '<g fill="#ff6a75" stroke="#ff6a75" transform="scale(1.35)">' + glyphs[k] + '</g></g>';
+    apps.appendChild(g);
+  }
+
+  // live clock in the mock
+  function pad(v){ return (v < 10 ? "0" : "") + v; }
+  function tick(){
+    var d = new Date();
+    document.getElementById("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    var days = ["SUN","MON","TUE","WED","THU","FRI","SAT"], mons = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    document.getElementById("date").textContent = days[d.getDay()] + " · " + pad(d.getDate()) + " " + mons[d.getMonth()] + " " + d.getFullYear();
+  }
+  tick(); setInterval(tick, 15000);
+
+  // latest version from GitHub Releases
+  fetch("https://api.github.com/repos/shatheitguy/alfa-launcher/releases/latest")
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ if (j && j.tag_name) document.getElementById("ver").textContent = j.tag_name; })
+    .catch(function(){});
+})();
+</script>
+</body>
+</html>

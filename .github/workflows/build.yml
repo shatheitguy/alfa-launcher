@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['README.md']
+    paths-ignore: ['README.md', 'LICENSE', 'docs/**']
   workflow_dispatch:
 
 permissions:
