@@ -332,6 +332,18 @@
                     android:textSize="26sp" />
 
                 <TextView
+                    android:id="@+id/galaxyMode"
+                    style="@style/Tech"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/glass_pill"
+                    android:paddingStart="14dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="8dp" />
+
+                <TextView
                     android:id="@+id/galaxyClose"
                     style="@style/Tech"
                     android:layout_width="wrap_content"

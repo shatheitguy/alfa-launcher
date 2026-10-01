@@ -221,6 +221,13 @@ class MainActivity : Activity() {
             galaxyReset.visibility = if (galaxyStage.isTransformed) View.VISIBLE else View.GONE
         }
         galaxyReset.setOnClickListener { galaxyStage.reset(true) }
+        findViewById<TextView>(R.id.galaxyMode).setOnClickListener {
+            val tilt3d = !prefs.getBoolean("galaxy_3d", true)
+            prefs.edit().putBoolean("galaxy_3d", tilt3d).apply()
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
+            applyGalaxyMode()
+            toast(if (tilt3d) "3D mode: drag to tilt, ‹ › for pages" else "Spin mode: circle to spin, swipe for pages")
+        }
 
         accent = accentOf(this)
         iconStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
@@ -526,8 +533,11 @@ class MainActivity : Activity() {
         }
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
-            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  SPIN  ·  SWIPE ↔  ·  2 FINGERS: ZOOM / TILT"
-            else "${allApps.size} APPS  ·  SWIPE ↔ PAGES  ·  2 FINGERS: ZOOM / TILT"
+            when {
+                prefs.getBoolean("galaxy_3d", true) -> "${allApps.size} APPS  ·  DRAG = 3D TILT  ·  PINCH = ZOOM  ·  ‹ › PAGES"
+                prefs.getBoolean("spin", true) -> "${allApps.size} APPS  ·  SPIN  ·  SWIPE ↔  ·  PINCH = ZOOM"
+                else -> "${allApps.size} APPS  ·  SWIPE ↔ PAGES  ·  PINCH = ZOOM"
+            }
         } else {
             "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"
         }
@@ -851,6 +861,17 @@ class MainActivity : Activity() {
         orbit.spinEnabled = on
         galaxyView.spinEnabled = on
         orbit.drift = prefs.getBoolean("drift", false)
+        applyGalaxyMode()
+    }
+
+    /** One-finger behaviour in All Apps: 3D tilt (default) or spin / swipe pages. */
+    private fun applyGalaxyMode() {
+        val tilt3d = prefs.getBoolean("galaxy_3d", true)
+        galaxyStage.oneFingerTilt = tilt3d
+        findViewById<TextView>(R.id.galaxyMode).apply {
+            text = if (tilt3d) "⬡ 3D" else "◎ SPIN"
+            setTextColor(accent)
+        }
         filterApps(false) // refresh the hint line
     }
 

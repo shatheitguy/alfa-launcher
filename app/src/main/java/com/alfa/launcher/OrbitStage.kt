@@ -3,18 +3,26 @@ package com.alfa.launcher
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * 3D stage around the all-apps orbit. One finger goes to the orbit (spin / page);
- * two fingers here: pinch = zoom, move together = tilt the orbit in 3D.
+ * 3D stage around the all-apps orbit.
+ * - Two fingers: pinch = zoom, move together = tilt.
+ * - One finger (when [oneFingerTilt]): drag = tilt the orbit in 3D like a trackball,
+ *   with momentum. Taps still reach the apps underneath.
  */
 class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, attrs) {
 
     var onTransform: (zoom: Float, tiltX: Float, tiltY: Float) -> Unit = { _, _, _ -> }
+
+    /** When true, a one-finger drag tilts in 3D instead of reaching the orbit (spin / page swipe). */
+    var oneFingerTilt = true
 
     var zoom = 1f
         private set
@@ -24,15 +32,73 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         private set
 
     private val d = resources.displayMetrics.density
+    private val slop = ViewConfiguration.get(context).scaledTouchSlop
+    private val maxTilt = 60f
+    private val degPerPx = 0.22f
+
     private var multi = false
+    private var single = false
+    private var reanchor = false
+    private var downX = 0f
+    private var downY = 0f
     private var lastCx = 0f
     private var lastCy = 0f
     private var startSpan = 1f
     private var startZoom = 1f
+    private var tracker: VelocityTracker? = null
+
+    // tilt momentum (degrees per ms)
+    private var vx = 0f
+    private var vy = 0f
+    private var flinging = false
+    private var lastFrame = 0L
+    private val fling = object : Runnable {
+        override fun run() {
+            if (!flinging) return
+            val now = System.nanoTime() / 1_000_000L
+            val dt = (now - lastFrame).coerceIn(1L, 48L)
+            lastFrame = now
+            tiltY = (tiltY + vx * dt).coerceIn(-maxTilt, maxTilt)
+            tiltX = (tiltX + vy * dt).coerceIn(-maxTilt, maxTilt)
+            if (abs(tiltY) >= maxTilt) vx = 0f
+            if (abs(tiltX) >= maxTilt) vy = 0f
+            val decay = Math.pow(0.994, dt.toDouble()).toFloat()
+            vx *= decay
+            vy *= decay
+            apply()
+            if (abs(vx) < 0.002f && abs(vy) < 0.002f) flinging = false else postOnAnimation(this)
+        }
+    }
 
     private val target: View? get() = if (childCount > 0) getChildAt(0) else null
 
+    private fun stopFling() {
+        flinging = false
+        removeCallbacks(fling)
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                stopFling()
+                downX = ev.x
+                downY = ev.y
+                single = false
+                multi = false
+                tracker?.recycle()
+                tracker = VelocityTracker.obtain()
+                tracker?.addMovement(ev)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                tracker?.addMovement(ev)
+                if (ev.pointerCount == 1 && oneFingerTilt && hypot(ev.x - downX, ev.y - downY) > slop) {
+                    single = true
+                    lastCx = ev.x
+                    lastCy = ev.y
+                    return true
+                }
+            }
+        }
         if (ev.pointerCount >= 2) {
             begin(ev)
             return true
@@ -41,53 +107,106 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        tracker?.addMovement(ev)
         when (ev.actionMasked) {
-            MotionEvent.ACTION_POINTER_DOWN -> begin(ev)
-            MotionEvent.ACTION_MOVE -> if (ev.pointerCount >= 2) {
-                if (!multi) begin(ev)
-                val (x, y) = centroid(ev, -1)
-                tiltY = (tiltY + (x - lastCx) * 0.20f).coerceIn(-55f, 55f)
-                tiltX = (tiltX - (y - lastCy) * 0.20f).coerceIn(-55f, 55f)
-                lastCx = x
-                lastCy = y
-                val span = span(ev, -1)
-                if (startSpan > 10f * d) zoom = (startZoom * span / startSpan).coerceIn(0.6f, 2.4f)
-                apply()
+            MotionEvent.ACTION_DOWN -> {
+                stopFling()
+                downX = ev.x
+                downY = ev.y
+                lastCx = ev.x
+                lastCy = ev.y
+                single = false
+                if (tracker == null) tracker = VelocityTracker.obtain().also { it.addMovement(ev) }
             }
-            MotionEvent.ACTION_POINTER_UP -> multi = false // re-anchor on the next move
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> multi = false
+            MotionEvent.ACTION_POINTER_DOWN -> begin(ev)
+            MotionEvent.ACTION_MOVE -> {
+                if (ev.pointerCount >= 2) {
+                    if (!multi) begin(ev)
+                    val (x, y) = centroid(ev)
+                    tilt(x - lastCx, y - lastCy)
+                    lastCx = x
+                    lastCy = y
+                    val span = span(ev)
+                    if (startSpan > 10f * d) zoom = (startZoom * span / startSpan).coerceIn(0.6f, 2.4f)
+                    apply()
+                } else if (oneFingerTilt) {
+                    if (reanchor) {
+                        lastCx = ev.x; lastCy = ev.y; reanchor = false; single = true
+                    }
+                    if (!single && hypot(ev.x - downX, ev.y - downY) > slop) {
+                        single = true
+                        lastCx = ev.x
+                        lastCy = ev.y
+                    }
+                    if (single) {
+                        tilt(ev.x - lastCx, ev.y - lastCy)
+                        lastCx = ev.x
+                        lastCy = ev.y
+                        apply()
+                    }
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                multi = false
+                reanchor = true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (single && oneFingerTilt) {
+                    val t = tracker
+                    t?.computeCurrentVelocity(1) // px per ms
+                    vx = (t?.xVelocity ?: 0f) * degPerPx
+                    vy = -(t?.yVelocity ?: 0f) * degPerPx
+                    if (abs(vx) > 0.01f || abs(vy) > 0.01f) {
+                        vx = vx.coerceIn(-0.8f, 0.8f)
+                        vy = vy.coerceIn(-0.8f, 0.8f)
+                        flinging = true
+                        lastFrame = System.nanoTime() / 1_000_000L
+                        postOnAnimation(fling)
+                    }
+                }
+                endGesture()
+            }
+            MotionEvent.ACTION_CANCEL -> endGesture()
         }
         return true
     }
 
+    private fun endGesture() {
+        multi = false
+        single = false
+        reanchor = false
+        tracker?.recycle()
+        tracker = null
+    }
+
+    private fun tilt(dx: Float, dy: Float) {
+        tiltY = (tiltY + dx * degPerPx).coerceIn(-maxTilt, maxTilt)
+        tiltX = (tiltX - dy * degPerPx).coerceIn(-maxTilt, maxTilt)
+    }
+
     private fun begin(ev: MotionEvent) {
-        val (x, y) = centroid(ev, -1)
+        val (x, y) = centroid(ev)
         lastCx = x
         lastCy = y
-        startSpan = span(ev, -1)
+        startSpan = span(ev)
         startZoom = zoom
         multi = true
+        single = false
     }
 
-    private fun centroid(ev: MotionEvent, skip: Int): Pair<Float, Float> {
+    private fun centroid(ev: MotionEvent): Pair<Float, Float> {
         var sx = 0f
         var sy = 0f
-        var n = 0
-        for (i in 0 until ev.pointerCount) {
-            if (i == skip) continue
-            sx += ev.getX(i); sy += ev.getY(i); n++
-        }
-        return if (n == 0) Pair(0f, 0f) else Pair(sx / n, sy / n)
+        val n = ev.pointerCount
+        for (i in 0 until n) { sx += ev.getX(i); sy += ev.getY(i) }
+        return Pair(sx / n, sy / n)
     }
 
-    private fun span(ev: MotionEvent, skip: Int): Float {
-        val (cx, cy) = centroid(ev, skip)
+    private fun span(ev: MotionEvent): Float {
+        val (cx, cy) = centroid(ev)
         var sum = 0f
-        var n = 0
-        for (i in 0 until ev.pointerCount) {
-            if (i == skip) continue
-            sum += hypot(ev.getX(i) - cx, ev.getY(i) - cy); n++
-        }
+        val n = ev.pointerCount
+        for (i in 0 until n) sum += hypot(ev.getX(i) - cx, ev.getY(i) - cy)
         return if (n == 0) 1f else sum / n
     }
 
@@ -104,11 +223,12 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     val isTransformed get() = zoom != 1f || tiltX != 0f || tiltY != 0f
 
     fun reset(animate: Boolean) {
+        stopFling()
         val t = target ?: return
         zoom = 1f; tiltX = 0f; tiltY = 0f
         if (animate) {
             t.animate().scaleX(1f).scaleY(1f).rotationX(0f).rotationY(0f)
-                .setDuration(380).setInterpolator(DecelerateInterpolator(2f))
+                .setDuration(420).setInterpolator(DecelerateInterpolator(2f))
                 .setUpdateListener { onTransform(t.scaleX, t.rotationX, t.rotationY) }
                 .start()
         } else {
@@ -116,5 +236,10 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             t.scaleX = 1f; t.scaleY = 1f; t.rotationX = 0f; t.rotationY = 0f
             onTransform(1f, 0f, 0f)
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        stopFling()
+        super.onDetachedFromWindow()
     }
 }
