@@ -74,6 +74,18 @@ ALFA updates itself from this repo's Releases:
 
 Requires Android 8.0+.
 
+## About the developer
+
+<img src="https://github.com/shatheitguy.png?size=120" width="72" align="left" alt="Sharqan Ahamed" />
+
+**Sharqan Ahamed, Sha The IT Guy**: Senior IT Infrastructure Engineer and Cloud & Cybersecurity Strategist, Dubai, UAE.
+I design and run the infrastructure other people take for granted. ALFA is the home screen I wanted on my own phone:
+the telemetry I'd check anyway, and the tools I actually reach for, one tap from home.
+
+[shatheitguy.in](https://shatheitguy.in) · [GitHub](https://github.com/shatheitguy) · [LinkedIn](https://ae.linkedin.com/in/sharqan-ahamed-8555b8169) · [YouTube](https://www.youtube.com/@shatheitguy) · [X](https://x.com/Sha_The_IT_Guy)
+
+Also by me: [IT-Vault](https://github.com/shatheitguy/it-vault), a self-hosted IT asset register and helpdesk.
+
 ## License
 
-ALFA Launcher is open source under the [MIT License](LICENSE). © 2026 shatheitguy.
+ALFA Launcher is open source under the [MIT License](LICENSE). © 2026 Sharqan Ahamed (Sha The IT Guy).
