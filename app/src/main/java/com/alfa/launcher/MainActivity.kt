@@ -214,7 +214,8 @@ class MainActivity : Activity() {
             override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
         }
         avatar.clipToOutline = true
-        findViewById<View>(R.id.profileRow).setOnClickListener { showProfileDialog() }
+        findViewById<View>(R.id.profileRow).setOnClickListener { openSettings() }
+        findViewById<View>(R.id.settingsButton).setOnClickListener { openSettings() }
 
         galaxyStage.onTransform = { z, tx, ty ->
             galaxyView.setDepth(tx, ty)
@@ -239,7 +240,10 @@ class MainActivity : Activity() {
             override fun onDrawerOpened() {}
             override fun onDrawerClosed() {}
             override fun onPullDown() = expandNotifications()
-            override fun onLongPress(x: Float, y: Float) = showHomeMenu(x, y)
+            override fun onLongPress(x: Float, y: Float) {
+                if (prefs.getBoolean("haptics", true)) swipe.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                openSettings()
+            }
         }
         swipe.setOnApplyWindowInsetsListener { _, insets -> applyInsets(insets); insets }
 
@@ -307,8 +311,7 @@ class MainActivity : Activity() {
         tickCount = 0
         handler.removeCallbacks(tick)
         handler.post(tick)
-        val newAccent = accentOf(this)
-        if (newAccent != accent) { accent = newAccent; applyAccent(); restyleIcons() }
+        applySettings()
         banner.visibility =
             if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
         showUpdateChip()
@@ -366,9 +369,6 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_HOME && !isDefaultLauncher()) {
             startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
-        }
-        if (requestCode == REQ_LOGO && resultCode == RESULT_OK) {
-            data?.data?.let { importLogo(it) }
         }
     }
 
@@ -655,79 +655,41 @@ class MainActivity : Activity() {
         menu.show()
     }
 
-    // ---------------- home menu / look ----------------
+    // ---------------- settings ----------------
 
-    private fun showHomeMenu(x: Float, y: Float) {
-        menuAnchor.translationX = x
-        menuAnchor.translationY = y
-        val menu = PopupMenu(this, menuAnchor)
-        val useWall = prefs.getBoolean("wallpaper", false)
-        menu.menu.add(0, 1, 0, if (useWall) "Use ALFA carbon background" else "Use my wallpaper")
-        menu.menu.add(0, 2, 1, "Change wallpaper")
-        val sub = menu.menu.addSubMenu(0, 3, 2, "Accent colour")
-        ACCENTS.forEachIndexed { i, (name, _) -> sub.add(0, 100 + i, i, name) }
-        val iconSub = menu.menu.addSubMenu(0, 8, 2, "Icon style")
-        IconStyler.STYLES.forEachIndexed { i, (id, name) ->
-            iconSub.add(0, 200 + i, i, if (id == iconStyle) "●  $name" else "○  $name")
+    private fun openSettings() {
+        if (galaxy.visibility == View.VISIBLE) closeGalaxy(false)
+        startSafe(Intent(this, SettingsActivity::class.java))
+    }
+
+    /** Re-reads everything ALFA OS Settings can change and applies what differs. */
+    private fun applySettings() {
+        val newAccent = accentOf(this)
+        val newStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
+        val restyle = newAccent != accent || newStyle != iconStyle
+        if (newAccent != accent) { accent = newAccent; applyAccent() }
+        iconStyle = newStyle
+        if (restyle) restyleIcons()
+        applyBackground()
+        applySpin()
+        applyHaptics()
+        refreshProfile()
+        toolsRow.visibility = if (prefs.getBoolean("show_tools", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.netRow).visibility = if (prefs.getBoolean("show_net", true)) View.VISIBLE else View.GONE
+        // "Reset orbit & dock" clears these; rebuild the defaults
+        if (!prefs.contains("orbit") && allApps.isNotEmpty()) {
+            initDefaults()
+            refreshHome()
         }
-        val spinOn = prefs.getBoolean("spin", true)
-        val driftOn = prefs.getBoolean("drift", false)
-        menu.menu.add(0, 9, 2, if (spinOn) "Orbit spin: ON  (tap to turn off)" else "Orbit spin: OFF  (tap to turn on)")
-        menu.menu.add(0, 10, 2, if (driftOn) "Idle drift: ON" else "Idle drift: OFF")
-        val hapticsOn = prefs.getBoolean("haptics", true)
-        menu.menu.add(0, 12, 2, if (hapticsOn) "Vibration: ON  (tap to turn off)" else "Vibration: OFF  (tap to turn on)")
-        menu.menu.add(0, 11, 1, "Profile (name & logo)")
-        menu.menu.add(0, 4, 3, "IT tools")
-        menu.menu.add(0, 7, 4, "Check for updates")
-        menu.menu.add(0, 5, 5, "Default home app")
-        menu.menu.add(0, 6, 6, "Android settings")
-        menu.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                1 -> { prefs.edit().putBoolean("wallpaper", !useWall).apply(); applyBackground() }
-                2 -> startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
-                3, 8 -> return@setOnMenuItemClickListener false
-                in 200 until 200 + IconStyler.STYLES.size -> {
-                    iconStyle = IconStyler.STYLES[item.itemId - 200].first
-                    prefs.edit().putString("icon_style", iconStyle).apply()
-                    restyleIcons()
-                }
-                4 -> openTool(null)
-                5 -> startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
-                6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
-                7 -> openTool(ToolsActivity.TOOL_UPDATE)
-                11 -> showProfileDialog()
-                12 -> {
-                    prefs.edit().putBoolean("haptics", !hapticsOn).apply()
-                    applyHaptics()
-                    toast(if (!hapticsOn) "Vibration on" else "Vibration off")
-                }
-                9 -> {
-                    prefs.edit().putBoolean("spin", !spinOn).apply()
-                    applySpin()
-                    toast(if (!spinOn) "Spin on: drag around the orbit" else "Spin off")
-                }
-                10 -> { prefs.edit().putBoolean("drift", !driftOn).apply(); applySpin() }
-                in 100 until 100 + ACCENTS.size -> {
-                    accent = Color.parseColor(ACCENTS[item.itemId - 100].second)
-                    prefs.edit().putInt("accent", accent).apply()
-                    applyAccent()
-                    if (iconStyle != IconStyler.ORIGINAL) restyleIcons()
-                }
-            }
-            true
-        }
-        menu.show()
     }
 
     // ---------------- profile ----------------
 
-    private val logoFile get() = File(filesDir, "profile_logo.png")
-
     private fun refreshProfile() {
-        val name = prefs.getString("profile_name", "")?.trim().orEmpty()
+        val name = Profile.name(this)
         profileName.text = if (name.isEmpty()) "Tap to set profile" else name
         profileName.alpha = if (name.isEmpty()) 0.6f else 1f
-        avatar.setImageBitmap(avatarBitmap(name))
+        avatar.setImageBitmap(Profile.avatar(this, accent, dp(96)))
         avatarFrame.backgroundTintList = null
         (avatarFrame.background?.mutate() as? android.graphics.drawable.GradientDrawable)
             ?.setStroke(dp(2), accent)
@@ -745,123 +707,6 @@ class MainActivity : Activity() {
         greeting.setTextColor(accent)
     }
 
-    /** The saved logo, or a generated initials badge. */
-    private fun avatarBitmap(name: String): Bitmap {
-        if (logoFile.exists()) {
-            BitmapFactory.decodeFile(logoFile.path)?.let { return it }
-        }
-        val s = dp(96)
-        val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.shader = RadialGradient(s / 2f, s * 0.3f, s * 0.8f, Color.rgb(44, 44, 52), Color.rgb(10, 10, 13), Shader.TileMode.CLAMP)
-        c.drawCircle(s / 2f, s / 2f, s / 2f, p)
-        p.shader = null
-        val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
-        p.color = accent
-        p.textAlign = Paint.Align.CENTER
-        p.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        p.textSize = s * if (initials.length > 1) 0.42f else 0.5f
-        c.drawText(initials.ifEmpty { "α" }, s / 2f, s / 2f - (p.descent() + p.ascent()) / 2f, p)
-        return bmp
-    }
-
-    private fun showProfileDialog() {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(16), dp(24), dp(4))
-        }
-        val preview = ImageView(this).apply {
-            setImageBitmap(avatarBitmap(prefs.getString("profile_name", "").orEmpty()))
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
-            }
-            clipToOutline = true
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        profilePreview = preview
-        box.addView(preview, LinearLayout.LayoutParams(dp(88), dp(88)).apply { gravity = Gravity.CENTER_HORIZONTAL })
-
-        val nameField = EditText(this).apply {
-            setText(prefs.getString("profile_name", ""))
-            hint = "Your name"
-            setSingleLine()
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.argb(128, 255, 255, 255))
-        }
-        box.addView(nameField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(this).apply {
-            text = label
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(if (primary) Color.BLACK else Color.WHITE)
-            setBackgroundResource(R.drawable.pill_accent)
-            backgroundTintList = ColorStateList.valueOf(if (primary) accent else Color.argb(38, 255, 255, 255))
-            setPadding(dp(12), dp(11), dp(12), dp(11))
-            setOnClickListener { onClick() }
-        }
-        row.addView(pill("Choose logo", true) { pickLogo() }, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(pill("Remove logo", false) {
-            logoFile.delete()
-            preview.setImageBitmap(avatarBitmap(nameField.text.toString()))
-            refreshProfile()
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
-        box.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
-
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Profile")
-            .setView(box)
-            .setPositiveButton("Save") { _, _ ->
-                prefs.edit().putString("profile_name", nameField.text.toString().trim()).apply()
-                refreshProfile()
-            }
-            .setNegativeButton("Cancel", null)
-            .setOnDismissListener { profilePreview = null }
-            .show()
-    }
-
-    @Suppress("DEPRECATION")
-    private fun pickLogo() {
-        val i = if (Build.VERSION.SDK_INT >= 33) {
-            Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*")
-        } else {
-            Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
-        }
-        try {
-            startActivityForResult(i, REQ_LOGO)
-        } catch (e: Exception) {
-            toast("No image picker available")
-        }
-    }
-
-    /** Centre-crops the picked image to a square, scales it and saves it as the profile logo. */
-    private fun importLogo(uri: Uri) {
-        io.execute {
-            try {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                if (bounds.outWidth <= 0) throw IOException("unreadable image")
-                var sample = 1
-                while (bounds.outWidth / (sample * 2) >= 512 && bounds.outHeight / (sample * 2) >= 512) sample *= 2
-                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-                val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                    ?: throw IOException("unreadable image")
-                val side = minOf(src.width, src.height)
-                val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
-                val out = Bitmap.createScaledBitmap(square, 384, 384, true)
-                logoFile.outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                handler.post {
-                    refreshProfile()
-                    profilePreview?.setImageBitmap(avatarBitmap(""))
-                }
-            } catch (e: Exception) {
-                handler.post { toast("Couldn't load that image") }
-            }
-        }
-    }
 
     private fun applySpin() {
         val on = prefs.getBoolean("spin", true)

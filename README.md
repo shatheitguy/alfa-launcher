@@ -24,6 +24,20 @@ Every push to `main` is built by GitHub Actions and published under [Releases](.
   - **Original**: the stock app icons
 - Accent colours: Crimson, Ice blue, Mint, Amber, Violet, Mono. The icons are redrawn in your accent colour.
 
+## ALFA OS Settings
+
+Open it with **⚙** next to your profile, or **long-press** the home screen. Every option lives here, grouped into sections:
+
+| Section | Options |
+|---|---|
+| Profile | name, logo (custom image or initials) |
+| Appearance | accent colour, icon style, background (ALFA carbon / my wallpaper), change wallpaper |
+| Orbit & motion | orbit spin, 3D tilt in All Apps, idle drift, vibration |
+| Home screen | IT tools bar, network line, reset orbit & dock |
+| Updates | check for updates, auto-check |
+| System | default home app, IT Tools, Android settings |
+| About | version, source & releases |
+
 ## IT Tools (built in)
 
 | Tool | What it does |
