@@ -76,7 +76,7 @@ Requires Android 8.0+.
 
 ## About the developer
 
-<img src="https://github.com/shatheitguy.png?size=120" width="72" align="left" alt="Sharqan Ahamed" />
+<img src="https://avatars.githubusercontent.com/u/61654902?v=4&s=120" width="72" align="left" alt="Sharqan Ahamed" />
 
 **Sharqan Ahamed, Sha The IT Guy**: Senior IT Infrastructure Engineer and Cloud & Cybersecurity Strategist, Dubai, UAE.
 I design and run the infrastructure other people take for granted. ALFA is the home screen I wanted on my own phone:
