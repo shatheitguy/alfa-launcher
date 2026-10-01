@@ -157,6 +157,29 @@ section{padding:84px 0}
 .band p{color:var(--text2);margin:12px auto 28px;max-width:560px}
 .band .cta{justify-content:center;margin-top:0}
 
+/* about */
+.about{display:grid;grid-template-columns:1.35fr 1fr;gap:18px}
+.about-card{padding:30px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
+.about-card > p{color:var(--text2);margin-top:14px}
+.about-me{display:flex;gap:20px;align-items:center;margin-bottom:6px}
+.about-av{flex:none;width:96px;height:96px;border-radius:50%;padding:3px;border:2px solid var(--accent);background:#0c0c10;box-shadow:0 0 40px -8px var(--accent-glow)}
+.about-av img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
+.about-me h3{font-size:24px;font-weight:500}
+.about-me .role{color:var(--text2);font-size:15px}
+.about-me .where{color:var(--accent);font-size:11px;letter-spacing:.18em;margin-top:6px}
+.links-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{padding:8px 14px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--text2);transition:border-color .2s,color .2s}
+.chip:hover{border-color:var(--accent);color:var(--text)}
+.about-side{display:flex;flex-direction:column;gap:14px}
+.also{display:block;padding:22px 24px;border:1px solid var(--line);border-radius:18px;background:rgba(14,14,19,.66);transition:border-color .2s,transform .2s}
+.also:hover{border-color:rgba(255,45,61,.45);transform:translateY(-2px)}
+.also h4{font-size:17px;font-weight:500}
+.also h4 span{font-size:10px;color:var(--text3);letter-spacing:.1em;margin-left:6px}
+.also p{color:var(--text2);font-size:14px;margin-top:6px}
+.also .go{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--accent)}
+@media (max-width:900px){.about{grid-template-columns:1fr}}
+@media (max-width:620px){.about-card{padding:22px}.about-me{flex-direction:column;align-items:flex-start}}
+
 footer{border-top:1px solid var(--line);margin-top:84px;padding:36px 0 48px;color:var(--text3);font-size:14px}
 footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
 footer .right{margin-left:auto;display:flex;gap:22px}
@@ -189,6 +212,7 @@ footer a:hover{color:var(--text)}
       <a href="#features">Features</a>
       <a href="#tools">IT Tools</a>
       <a href="#install">Install</a>
+      <a href="#about">About</a>
     </div>
     <a class="gh" href="https://github.com/shatheitguy/alfa-launcher" target="_blank" rel="noopener">
       <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -324,6 +348,49 @@ footer a:hover{color:var(--text)}
   </div>
 </section>
 
+<section id="about">
+  <div class="wrap">
+    <div class="head">
+      <div class="tag">About the developer</div>
+      <h2>Built by Sha The IT Guy.</h2>
+    </div>
+    <div class="about">
+      <div class="about-card">
+        <div class="about-me">
+          <div class="about-av"><img src="https://github.com/shatheitguy.png?size=240" alt="Sharqan Ahamed" width="96" height="96" loading="lazy"></div>
+          <div>
+            <h3>Sharqan Ahamed</h3>
+            <p class="role">Senior IT Infrastructure Engineer · Cloud &amp; Cybersecurity Strategist</p>
+            <p class="where mono">DUBAI, UAE · 7+ YEARS</p>
+          </div>
+        </div>
+        <p>I design and run the infrastructure other people take for granted: the network under a stadium on match day, the hypervisors under the line-of-business apps, the backups that have to work the one time they're needed. Lately that's mostly self-hosted AI on my own hardware and zero-trust networking.</p>
+        <p>ALFA is the home screen I wanted on my own phone: the telemetry I'd check anyway, and the tools I actually reach for (ping, DNS, ports, subnets), one tap from home.</p>
+        <div class="links-row">
+          <a class="chip" href="https://shatheitguy.in" target="_blank" rel="noopener">&#127760; shatheitguy.in</a>
+          <a class="chip" href="https://github.com/shatheitguy" target="_blank" rel="noopener">GitHub</a>
+          <a class="chip" href="https://ae.linkedin.com/in/sharqan-ahamed-8555b8169" target="_blank" rel="noopener">LinkedIn</a>
+          <a class="chip" href="https://www.youtube.com/@shatheitguy" target="_blank" rel="noopener">YouTube</a>
+          <a class="chip" href="https://x.com/Sha_The_IT_Guy" target="_blank" rel="noopener">X · @Sha_The_IT_Guy</a>
+        </div>
+      </div>
+      <div class="about-side">
+        <div class="tag" style="margin-bottom:14px">Also by Sha</div>
+        <a class="also" href="https://shatheitguy.github.io/it-vault/" target="_blank" rel="noopener">
+          <h4>IT-Vault <span class="mono">AGPL-3.0</span></h4>
+          <p>Self-hosted IT asset register and helpdesk: assets, contracts, tickets, LDAP sync, QR tags, e-signed handovers and an offline-first Android companion.</p>
+          <span class="go">Project site &rsaquo;</span>
+        </a>
+        <a class="also" href="https://github.com/shatheitguy" target="_blank" rel="noopener">
+          <h4>More on GitHub</h4>
+          <p>Unraid templates, tools and everything else in progress.</p>
+          <span class="go">github.com/shatheitguy &rsaquo;</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="install">
   <div class="wrap">
     <div class="head">
@@ -351,7 +418,7 @@ footer a:hover{color:var(--text)}
 
 <footer>
   <div class="wrap">
-    <div>&copy; 2026 shatheitguy · ALFA OS Launcher · <a href="https://github.com/shatheitguy/alfa-launcher/blob/main/LICENSE">MIT licence</a></div>
+    <div>&copy; 2026 <a href="https://shatheitguy.in">Sharqan Ahamed · Sha The IT Guy</a> · ALFA OS Launcher · <a href="https://github.com/shatheitguy/alfa-launcher/blob/main/LICENSE">MIT licence</a></div>
     <div class="right">
       <a href="https://github.com/shatheitguy/alfa-launcher">Source</a>
       <a href="https://github.com/shatheitguy/alfa-launcher/releases">Releases</a>
