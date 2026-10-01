@@ -750,33 +750,51 @@ class MainActivity : Activity() {
         galaxyView.accent = accent
         galaxySearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
         refreshProfile()
-        for (i in 0 until toolsRow.childCount) {
-            (toolsRow.getChildAt(i) as? TextView)?.setTextColor(accent)
+        if (::toolsIcon.isInitialized) {
+            toolsIcon.setTextColor(accent)
+            toolsTitle.setTextColor(accent)
         }
     }
 
+    private lateinit var toolsIcon: TextView
+    private lateinit var toolsTitle: TextView
+
+    /** One grouped "IT Tools" button; every tool (ping, network, ports, …) lives inside it. */
     private fun buildToolsRow() {
-        val items = listOf(
-            "PING" to ToolsActivity.TOOL_PING,
-            "NET" to ToolsActivity.TOOL_NETWORK,
-            "PORTS" to ToolsActivity.TOOL_PORTS,
-            "TOOLS ›" to null,
-        )
-        items.forEachIndexed { i, (label, tool) ->
-            val tv = TextView(this).apply {
-                text = label
-                gravity = Gravity.CENTER
-                typeface = Typeface.MONOSPACE
-                letterSpacing = 0.15f
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setBackgroundResource(R.drawable.glass_pill)
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                    if (i > 0) marginStart = dp(8)
-                }
-                setOnClickListener { openTool(tool) }
+        val pill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.glass_pill)
+            setPadding(dp(16), 0, dp(16), 0)
+            contentDescription = "IT Tools"
+            setOnClickListener {
+                if (prefs.getBoolean("haptics", true)) it.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
+                openTool(null)
             }
-            toolsRow.addView(tv)
         }
+        toolsIcon = TextView(this).apply {
+            text = "⌘"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        }
+        toolsTitle = TextView(this).apply {
+            text = "IT TOOLS"
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.18f
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        val sub = TextView(this).apply {
+            text = "PING · NETWORK · PORTS · +7  ›"
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.08f
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTextColor(Color.argb(140, 255, 255, 255))
+            gravity = Gravity.END
+            maxLines = 1
+        }
+        pill.addView(toolsIcon)
+        pill.addView(toolsTitle, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(10) })
+        pill.addView(sub, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10) })
+        toolsRow.addView(pill, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun openTool(tool: String?) {
