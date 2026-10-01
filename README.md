@@ -1,6 +1,12 @@
 # ALFA Launcher
 
+[![Website](https://img.shields.io/badge/website-alfa--launcher-ff2d3d)](https://shatheitguy.github.io/alfa-launcher/)
+[![Latest release](https://img.shields.io/github/v/release/shatheitguy/alfa-launcher?color=ff2d3d)](../../releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A sci-fi, minimal Android **home screen replacement** with a built-in IT toolkit.
+
+🌐 **Website:** https://shatheitguy.github.io/alfa-launcher/
 
 ## Download
 
@@ -67,3 +73,7 @@ ALFA updates itself from this repo's Releases:
 2. Open **ALFA Launcher** and tap **Set as default**. It then replaces the stock launcher, and pressing Home brings you here.
 
 Requires Android 8.0+.
+
+## License
+
+ALFA Launcher is open source under the [MIT License](LICENSE). © 2026 shatheitguy.
