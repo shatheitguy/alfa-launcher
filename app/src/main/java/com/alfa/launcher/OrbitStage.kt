@@ -244,6 +244,18 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         onTransform(zoom, tiltX, tiltY)
     }
 
+    /** Live tilt driven by the orbit's own one-finger drag (screen-space deltas in px). */
+    fun tiltBy(dx: Float, dy: Float) {
+        spring?.cancel()
+        tilt(dx, dy)
+        apply()
+    }
+
+    /** Finger lifted: spring back flat. */
+    fun release() {
+        if (springBack) springFlat()
+    }
+
     val isTransformed get() = zoom != 1f || tiltX != 0f || tiltY != 0f
 
     fun reset(animate: Boolean) {

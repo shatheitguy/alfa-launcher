@@ -131,7 +131,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
                 contentDescription = app.label
                 setOnClickListener { onClick(app) }
                 setOnLongClickListener {
-                    it.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    if (spinner.haptics) it.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                     onLong(it, app); true
                 }
             }
