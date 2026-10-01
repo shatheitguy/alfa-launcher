@@ -33,10 +33,17 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <!-- profile: logo + greeting / name -->
+            <!-- profile: logo + greeting / name, and the OS settings button -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
             <LinearLayout
                 android:id="@+id/profileRow"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:background="@drawable/ripple_item"
                 android:gravity="center_vertical"
@@ -85,6 +92,18 @@
                 </LinearLayout>
             </LinearLayout>
 
+                <TextView
+                    android:id="@+id/settingsButton"
+                    style="@style/Label"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/glass_pill"
+                    android:contentDescription="ALFA OS settings"
+                    android:gravity="center"
+                    android:text="⚙"
+                    android:textSize="20sp" />
+            </LinearLayout>
+
             <!-- top bar: clock + system readout -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -129,6 +148,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/netRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
