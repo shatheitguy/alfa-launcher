@@ -129,6 +129,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
                 val p = (1 * d).toInt()
                 setPadding(p, p, p, p)
                 contentDescription = app.label
+                setLayerType(View.LAYER_TYPE_HARDWARE, null) // smooth sub-pixel motion while spinning
                 setOnClickListener { onClick(app) }
                 setOnLongClickListener {
                     if (spinner.haptics) it.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)

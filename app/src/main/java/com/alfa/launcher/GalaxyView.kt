@@ -151,6 +151,9 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             }
             slot.addView(icon)
             slot.addView(label)
+            // each tile is rendered once into a GPU texture and then just moved:
+            // smooth sub-pixel motion, no text/edge shimmer while spinning
+            slot.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             slots.add(slot)
             addView(slot)
         }
