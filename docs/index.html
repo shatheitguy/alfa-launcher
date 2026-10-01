@@ -96,12 +96,27 @@ nav .gh:hover{border-color:var(--accent)}
 .s-dock span{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--accent);background:radial-gradient(circle at 50% 30%,#2a2a32,#0b0b0e)}
 
 /* orbit animation */
-.spin{transform-box:view-box;transform-origin:200px 200px;animation:spin 48s linear infinite}
-.spin.rev{animation-duration:24s;animation-direction:reverse}
-.apps{transform-box:view-box;transform-origin:200px 200px;animation:spin 36s linear infinite}
-.apps .app{transform-box:fill-box;transform-origin:center;animation:spin 36s linear infinite reverse}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spin,.apps,.apps .app{animation:none}}
+/* interactive orbit (driven by JS, same physics as the app) */
+#orbitSvg{touch-action:none;cursor:grab;overflow:visible;user-select:none;-webkit-user-select:none;will-change:transform}
+#orbitSvg.grabbing{cursor:grabbing}
+.layer{transform-box:view-box;transform-origin:200px 200px;transition:opacity .38s ease,transform .55s cubic-bezier(.2,.85,.25,1)}
+#galaxyLayer{opacity:0;transform:scale(.55) rotate(-30deg);pointer-events:none}
+.screen.galaxy #homeLayer{opacity:0;transform:scale(1.18) rotate(18deg);pointer-events:none}
+.screen.galaxy #galaxyLayer{opacity:1;transform:none;pointer-events:auto}
+.screen .fade{transition:opacity .3s ease,transform .4s ease}
+.screen.galaxy .fade{opacity:0;transform:scale(1.05)}
+.s-orbit{transition:transform .5s cubic-bezier(.2,.85,.25,1)}
+.screen.galaxy .s-orbit{transform:scale(1.12)}
+.g-ui{position:absolute;left:18px;right:18px;opacity:0;transition:opacity .35s ease;pointer-events:none;z-index:2}
+.screen.galaxy .g-ui{opacity:1}
+.g-head{top:28px;display:flex;align-items:center;font-size:20px;font-weight:300}
+.g-head i{margin-left:auto;font-style:normal;font-family:var(--mono);font-size:8px;letter-spacing:.14em;padding:6px 10px;border:1px solid var(--line);border-radius:999px;color:var(--text2)}
+.g-hint{bottom:22px;text-align:center;font-size:7.5px;letter-spacing:.16em;color:var(--text3)}
+.phone-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.phone-hint{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--text3);text-transform:uppercase;text-align:center}
+.phone-hint b{color:var(--accent);font-weight:500}
+.demo-btn{font:500 13px var(--sans);color:var(--text);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:999px;padding:9px 18px;cursor:pointer;transition:border-color .2s}
+.demo-btn:hover{border-color:var(--accent)}
 
 /* sections */
 section{padding:84px 0}
@@ -197,47 +212,71 @@ footer a:hover{color:var(--text)}
     <div class="meta"><span>Android 8.0+</span><span>~1.6 MB</span><span>MIT licence</span><span>No ads · no tracking</span></div>
   </div>
 
-  <div class="phone" aria-label="ALFA home screen preview">
+  <div class="phone-wrap"><div class="phone" aria-label="ALFA home screen preview">
     <div class="screen">
-      <div class="s-top">
+      <div class="s-top fade">
         <div class="s-av">S</div>
         <div><div class="s-hi">GOOD EVENING</div><div class="s-name">Sha</div></div>
         <div class="s-gear">&#9881;</div>
       </div>
-      <div class="s-clock" id="clock">21:41</div>
-      <div class="s-date" id="date">WED · 01 OCT 2026</div>
-      <div class="s-net">WI-FI · 192.168.1.23 · TAP FOR NETWORK INFO</div>
+      <div class="s-clock fade" id="clock">21:41</div>
+      <div class="s-date fade" id="date">WED · 01 OCT 2026</div>
+      <div class="s-net fade">WI-FI · 192.168.1.23 · TAP FOR NETWORK INFO</div>
+      <div class="g-ui g-head"><span>All apps</span><i>CLOSE &#10005;</i></div>
+      <div class="g-ui g-hint mono">CIRCLE = SPIN · SWIPE = PAGE · DRAG = 3D</div>
       <div class="s-orbit">
-        <svg viewBox="0 0 400 400" aria-hidden="true">
+        <svg id="orbitSvg" viewBox="0 0 400 400" role="img" aria-label="Interactive ALFA orbit: drag to spin, tap the centre for All Apps">
           <defs>
             <radialGradient id="glow"><stop offset="0" stop-color="#ff2d3d" stop-opacity=".28"/><stop offset="1" stop-color="#ff2d3d" stop-opacity="0"/></radialGradient>
             <radialGradient id="orb" cx="50%" cy="30%"><stop offset="0" stop-color="#2c2c34"/><stop offset="1" stop-color="#0a0a0d"/></radialGradient>
           </defs>
           <circle cx="200" cy="200" r="196" fill="url(#glow)"/>
-          <circle cx="200" cy="200" r="188" fill="none" stroke="rgba(255,255,255,.18)"/>
-          <g class="spin" id="ticks"></g>
-          <!-- RAM / storage arcs -->
-          <path d="M 45.9 92.2 A 188 188 0 0 0 45.9 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
-          <path d="M 45.9 307.8 A 188 188 0 0 1 16 220" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
-          <path d="M 354.1 92.2 A 188 188 0 0 1 354.1 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
-          <path d="M 354.1 307.8 A 188 188 0 0 0 380 250" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
-          <text x="46" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">RAM</text>
-          <text x="46" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">52%</text>
-          <text x="354" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">STO</text>
-          <text x="354" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">34%</text>
-          <g class="apps" id="apps"></g>
-          <circle class="spin rev" cx="200" cy="200" r="78" fill="none" stroke="rgba(255,45,61,.55)" stroke-width="1.5" stroke-dasharray="3 8"/>
-          <circle cx="200" cy="200" r="70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
-          <circle cx="200" cy="200" r="70" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round" stroke-dasharray="383 440" transform="rotate(-90 200 200)"/>
-          <circle cx="200" cy="200" r="64" fill="url(#orb)" stroke="rgba(255,255,255,.2)"/>
-          <text x="200" y="205" fill="#fff" font-family="Space Grotesk" font-weight="300" font-size="38" text-anchor="middle">87%</text>
-          <text x="200" y="226" fill="rgba(255,255,255,.65)" font-family="JetBrains Mono" font-size="9" letter-spacing="3" text-anchor="middle">BATTERY</text>
+
+          <!-- HOME orbit dial -->
+          <g id="homeLayer" class="layer">
+            <circle cx="200" cy="200" r="188" fill="none" stroke="rgba(255,255,255,.18)"/>
+            <g id="ticks"></g>
+            <path d="M 45.9 92.2 A 188 188 0 0 0 45.9 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M 45.9 307.8 A 188 188 0 0 1 16 220" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
+            <path d="M 354.1 92.2 A 188 188 0 0 1 354.1 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M 354.1 307.8 A 188 188 0 0 0 380 250" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
+            <text x="46" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">RAM</text>
+            <text x="46" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">52%</text>
+            <text x="354" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">STO</text>
+            <text x="354" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">34%</text>
+            <g id="apps"></g>
+            <circle id="dash" cx="200" cy="200" r="78" fill="none" stroke="rgba(255,45,61,.55)" stroke-width="1.5" stroke-dasharray="3 8"/>
+            <circle cx="200" cy="200" r="70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
+            <circle cx="200" cy="200" r="70" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round" stroke-dasharray="383 440" transform="rotate(-90 200 200)"/>
+            <circle cx="200" cy="200" r="64" fill="url(#orb)" stroke="rgba(255,255,255,.2)"/>
+            <text x="200" y="203" fill="#fff" font-family="Space Grotesk" font-weight="300" font-size="38" text-anchor="middle">87%</text>
+            <text x="200" y="223" fill="rgba(255,255,255,.65)" font-family="JetBrains Mono" font-size="9" letter-spacing="3" text-anchor="middle">BATTERY</text>
+            <text x="200" y="239" fill="rgba(255,255,255,.45)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">TAP &#9678;</text>
+          </g>
+
+          <!-- ALL APPS orbit: 3 rings -->
+          <g id="galaxyLayer" class="layer">
+            <g id="gTracks" fill="none" stroke="rgba(255,255,255,.1)"></g>
+            <g id="gTicks"></g>
+            <g id="gApps"></g>
+            <g id="gHub">
+              <circle id="gDash" cx="200" cy="200" r="46" fill="none" stroke="rgba(255,45,61,.6)" stroke-width="1.5" stroke-dasharray="3 7"/>
+              <circle cx="200" cy="200" r="39" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4"/>
+              <circle id="gArc" cx="200" cy="200" r="39" fill="none" stroke="#ff2d3d" stroke-width="4" stroke-linecap="round" transform="rotate(-90 200 200)"/>
+              <circle cx="200" cy="200" r="34" fill="url(#orb)" stroke="rgba(255,255,255,.2)"/>
+              <text id="gRange" x="200" y="203" fill="#fff" font-family="Space Grotesk" font-weight="300" font-size="20" text-anchor="middle">A–C</text>
+              <text id="gPage" x="200" y="217" fill="rgba(255,255,255,.6)" font-family="JetBrains Mono" font-size="7" letter-spacing="1.5" text-anchor="middle">1 / 4</text>
+            </g>
+          </g>
         </svg>
       </div>
-      <div class="s-pill"><b>&#8984; IT TOOLS</b> PING · NETWORK · PORTS <i>+7 &rsaquo;</i></div>
-      <div class="s-pill">&#9906;&nbsp; Search apps <i>ALL APPS &#9678;</i></div>
-      <div class="s-dock"><span></span><span></span><span></span><span></span></div>
+      <div class="s-pill fade"><b>&#8984; IT TOOLS</b> PING · NETWORK · PORTS <i>+7 &rsaquo;</i></div>
+      <div class="s-pill fade">&#9906;&nbsp; Search apps <i>ALL APPS &#9678;</i></div>
+      <div class="s-dock fade"><span></span><span></span><span></span><span></span></div>
     </div>
+  </div>
+  <p class="phone-hint">Try it: <b>drag</b> to spin · <b>tap the centre</b> for All Apps</p>
+  <button class="demo-btn" id="demoBtn" type="button">&#9654; Watch demo</button>
   </div>
 </header>
 
@@ -322,21 +361,30 @@ footer a:hover{color:var(--text)}
 </footer>
 
 <script>
-// tick ring + orbiting app orbs for the preview
-(function(){
-  var ns = "http://www.w3.org/2000/svg";
-  var ticks = document.getElementById("ticks");
-  for (var i = 0; i < 90; i++) {
-    var major = i % 15 === 0;
-    var l = document.createElementNS(ns, "line");
-    l.setAttribute("x1", 200); l.setAttribute("x2", 200);
-    l.setAttribute("y1", 15); l.setAttribute("y2", major ? 26 : 20);
-    l.setAttribute("stroke", major ? "#ff2d3d" : "rgba(255,255,255,.25)");
-    l.setAttribute("stroke-width", major ? 2.5 : 1.2);
-    l.setAttribute("transform", "rotate(" + (i * 4) + " 200 200)");
-    ticks.appendChild(l);
+/* ALFA orbit preview: same feel as the launcher.
+   - drag around the ring to spin (eased, with fling momentum), idle drift
+   - tap the centre: All Apps orbit (3 rings, parallax, 3D tilt while dragging, springs back)
+   - in All Apps: a straight swipe changes page, a curved drag spins
+   - when nobody touches it, a short demo plays on its own */
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var C = 200;                                   // viewBox centre
+  var ACC = "#ff2d3d", GLY = "#ff6a75";
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var svg = document.getElementById("orbitSvg");
+  var screen = document.querySelector(".screen");
+  var box = document.querySelector(".s-orbit");
+  if (!svg || !screen) return;
+
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
   }
-  // simple glyphs: settings, photos, mail, maps, calendar, clock, store, chat
+
+  // ---------- glyphs (settings, photos, mail, maps, calendar, clock, store, chat, music, camera, files, terminal)
   var glyphs = [
     '<circle r="6" fill="none" stroke-width="2.2"/><circle r="1.8"/>',
     '<path d="M-7 5 -2 -2 2 3 4 0 7 5Z"/><circle cx="4" cy="-4" r="1.8"/>',
@@ -345,38 +393,319 @@ footer a:hover{color:var(--text)}
     '<rect x="-7" y="-6" width="14" height="13" rx="2" fill="none" stroke-width="2"/><path d="M-7 -2H7" stroke-width="2"/>',
     '<circle r="7" fill="none" stroke-width="2"/><path d="M0 -4V0L3 2" fill="none" stroke-width="2" stroke-linecap="round"/>',
     '<path d="M-6 -2H6L5 7H-5Z" fill="none" stroke-width="2"/><path d="M-3 -2V-4A3 3 0 0 1 3 -4V-2" fill="none" stroke-width="2"/>',
-    '<path d="M-7 -5H7V4H-1L-5 7V4H-7Z" fill="none" stroke-width="2" stroke-linejoin="round"/>'
+    '<path d="M-7 -5H7V4H-1L-5 7V4H-7Z" fill="none" stroke-width="2" stroke-linejoin="round"/>',
+    '<path d="M-2 5V-6L6 -8V3" fill="none" stroke-width="2"/><circle cx="-4" cy="5" r="2.5"/><circle cx="4" cy="3" r="2.5"/>',
+    '<rect x="-7" y="-4" width="14" height="10" rx="2" fill="none" stroke-width="2"/><circle cy="1" r="2.6" fill="none" stroke-width="2"/><path d="M-3 -4-1.5 -6.5H1.5L3 -4" fill="none" stroke-width="2"/>',
+    '<path d="M-7 -5H-1L1 -3H7V6H-7Z" fill="none" stroke-width="2" stroke-linejoin="round"/>',
+    '<rect x="-7" y="-6" width="14" height="12" rx="2" fill="none" stroke-width="2"/><path d="M-4 -2-1 0-4 2M0 3H4" fill="none" stroke-width="1.8" stroke-linecap="round"/>'
   ];
-  var apps = document.getElementById("apps");
-  var n = glyphs.length, R = 132;
-  for (var k = 0; k < n; k++) {
-    var a = (-90 + (k + 0.5) * 360 / n) * Math.PI / 180;
-    var x = 200 + R * Math.cos(a), y = 200 + R * Math.sin(a);
-    var g = document.createElementNS(ns, "g");
-    g.setAttribute("class", "app");
-    g.innerHTML =
-      '<g transform="translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ')">' +
-      '<circle r="25" fill="url(#orb)" stroke="#ff2d3d" stroke-width="2.2"/>' +
-      '<circle r="21" fill="none" stroke="rgba(255,255,255,.12)"/>' +
-      '<g fill="#ff6a75" stroke="#ff6a75" transform="scale(1.35)">' + glyphs[k] + '</g></g>';
-    apps.appendChild(g);
+
+  function orb(parent, r, glyphIdx, scale) {
+    var g = el("g", {}, parent);
+    el("circle", { r: r, fill: "url(#orb)", stroke: ACC, "stroke-width": r > 20 ? 2.2 : 1.6 }, g);
+    el("circle", { r: r * 0.84, fill: "none", stroke: "rgba(255,255,255,.12)" }, g);
+    var gl = el("g", { fill: GLY, stroke: GLY, transform: "scale(" + scale + ")" }, g);
+    gl.innerHTML = glyphs[glyphIdx % glyphs.length];
+    return { g: g, gl: gl };
   }
 
-  // live clock in the mock
-  function pad(v){ return (v < 10 ? "0" : "") + v; }
-  function tick(){
+  // ---------- home layer
+  var ticks = document.getElementById("ticks");
+  for (var i = 0; i < 90; i++) {
+    var major = i % 15 === 0;
+    el("line", { x1: C, x2: C, y1: 15, y2: major ? 26 : 20, stroke: major ? ACC : "rgba(255,255,255,.25)",
+      "stroke-width": major ? 2.5 : 1.2, transform: "rotate(" + (i * 4) + " 200 200)" }, ticks);
+  }
+  var appsG = document.getElementById("apps");
+  var homeApps = [];
+  for (var k = 0; k < 8; k++) homeApps.push(orb(appsG, 25, k, 1.35).g);
+  var dash = document.getElementById("dash");
+
+  // ---------- galaxy layer
+  var RINGS = [6, 12, 18], RADII = [72, 120, 168], PAGES = 4;
+  var RANGES = ["A–C", "D–K", "L–R", "S–Z"];
+  var gTracks = document.getElementById("gTracks");
+  RADII.forEach(function (r) { el("circle", { cx: C, cy: C, r: r }, gTracks); });
+  var gTicks = document.getElementById("gTicks");
+  for (var t = 0; t < 120; t++) {
+    var mj = t % 10 === 0;
+    el("line", { x1: C, x2: C, y1: 4, y2: mj ? 13 : 8, stroke: mj ? ACC : "rgba(255,255,255,.2)",
+      "stroke-width": mj ? 2 : 1, transform: "rotate(" + (t * 3) + " 200 200)" }, gTicks);
+  }
+  var gAppsG = document.getElementById("gApps");
+  var gSlots = [];
+  RINGS.forEach(function (n, r) {
+    for (var q = 0; q < n; q++) gSlots.push({ ring: r, idx: q, n: n, o: orb(gAppsG, 15, q + r * 5, 0.85) });
+  });
+  var gHub = document.getElementById("gHub"), gDash = document.getElementById("gDash");
+  var gArc = document.getElementById("gArc"), gRange = document.getElementById("gRange"), gPage = document.getElementById("gPage");
+  var ARC_LEN = 2 * Math.PI * 39;
+
+  // ---------- physics (mirrors Spinner.kt: eased target + decaying momentum)
+  function Spinner() { this.a = 0; this.t = 0; this.v = 0; this.fling = false; }
+  Spinner.prototype.step = function (dt) {
+    if (this.fling) {
+      this.t += this.v * dt;
+      this.v *= Math.pow(0.9968, dt);
+      if (Math.abs(this.v) < 0.004) this.fling = false;
+    }
+    this.a += (this.t - this.a) * (1 - Math.exp(-dt / 26));
+  };
+  Spinner.prototype.hold = function () { this.fling = false; this.v = 0; this.t = this.a; };
+  var homeSpin = new Spinner(), galSpin = new Spinner();
+
+  var mode = "home";
+  var tilt = { x: 0, y: 0, vx: 0, vy: 0, gx: 0, gy: 0, held: false };   // degrees
+  var page = 0, pageSpin = 0, pageAlpha = 1, pageAnim = null;
+  var phase = 0, lastInteract = performance.now();
+
+  function setMode(m) {
+    if (mode === m) return;
+    mode = m;
+    screen.classList.toggle("galaxy", m === "galaxy");
+    if (m === "home") { tilt.held = false; }
+    renderPageLabels();
+  }
+
+  function renderPageLabels() {
+    gRange.textContent = RANGES[page];
+    gPage.textContent = (page + 1) + " / " + PAGES;
+    var seg = ARC_LEN / PAGES;
+    gArc.setAttribute("stroke-dasharray", seg.toFixed(1) + " " + (ARC_LEN - seg).toFixed(1));
+    gArc.setAttribute("stroke-dashoffset", (-seg * page).toFixed(1));
+    // different glyphs on each page
+    gSlots.forEach(function (s, i) { s.o.gl.innerHTML = glyphs[(i * 5 + page * 7) % glyphs.length]; });
+  }
+
+  function goPage(dir) {
+    if (pageAnim) return;
+    pageAnim = { start: performance.now(), dir: dir, swapped: false };
+  }
+
+  // ---------- frame loop
+  var last = performance.now(), running = true;
+  function frame(now) {
+    var dt = Math.min(40, Math.max(1, now - last));
+    last = now;
+    phase = (phase + dt * 0.006) % 360;              // slow tick rotation, always on
+
+    // idle drift on home (gentle, always on, like the app's Idle drift)
+    if (mode === "home" && !pointer.down && !homeSpin.fling) homeSpin.t += dt * 0.004;
+    homeSpin.step(dt);
+    galSpin.step(dt);
+
+    // page transition (out 160ms, in 300ms)
+    if (pageAnim) {
+      var e = now - pageAnim.start, d = pageAnim.dir;
+      if (e < 160) {
+        var f = e / 160; f = f * f;
+        pageSpin = -d * 45 * f; pageAlpha = 1 - f;
+      } else {
+        if (!pageAnim.swapped) { page = (page + d + PAGES) % PAGES; renderPageLabels(); pageAnim.swapped = true; }
+        var g2 = Math.min(1, (e - 160) / 300), ease = 1 - Math.pow(1 - g2, 3);
+        pageSpin = d * 45 * (1 - ease); pageAlpha = ease;
+        if (g2 >= 1) { pageAnim = null; pageSpin = 0; pageAlpha = 1; }
+      }
+    }
+
+    // 3D tilt: eased toward the finger while held, damped spring back to flat when released
+    if (tilt.held) {
+      var k = 1 - Math.exp(-dt / 45);
+      tilt.x += (tilt.gx - tilt.x) * k; tilt.y += (tilt.gy - tilt.y) * k; tilt.vx = tilt.vy = 0;
+    } else {
+      for (var s = 0; s < dt; s += 4) {           // small fixed steps keep the spring stable
+        var h = Math.min(4, dt - s);
+        tilt.vx += (-0.0009 * tilt.x - 0.05 * tilt.vx) * h;
+        tilt.vy += (-0.0009 * tilt.y - 0.05 * tilt.vy) * h;
+        tilt.x += tilt.vx * h; tilt.y += tilt.vy * h;
+      }
+      if (Math.abs(tilt.x) < 0.01 && Math.abs(tilt.vx) < 0.001) tilt.x = 0;
+      if (Math.abs(tilt.y) < 0.01 && Math.abs(tilt.vy) < 0.001) tilt.y = 0;
+    }
+
+    demoStep(now, dt);
+    render();
+    if (running) requestAnimationFrame(frame);
+  }
+
+  function render() {
+    // home
+    ticks.setAttribute("transform", "rotate(" + (phase + homeSpin.a).toFixed(2) + " 200 200)");
+    dash.setAttribute("transform", "rotate(" + (-phase * 2).toFixed(2) + " 200 200)");
+    for (var k = 0; k < homeApps.length; k++) {
+      var a = (-90 + (k + 0.5) * 45 + homeSpin.a) * Math.PI / 180;
+      homeApps[k].setAttribute("transform", "translate(" + (C + 132 * Math.cos(a)).toFixed(2) + " " + (C + 132 * Math.sin(a)).toFixed(2) + ")");
+    }
+    // galaxy (parallax: hub = depth 3, inner = 2, middle = 1, outer = 0)
+    var dx = (tilt.y / 55) * 11, dy = (-tilt.x / 55) * 11;
+    gTicks.setAttribute("transform", "rotate(" + (phase + galSpin.a).toFixed(2) + " 200 200)");
+    for (var i = 0; i < gSlots.length; i++) {
+      var sl = gSlots[i], r = sl.ring;
+      var dir = r % 2 === 0 ? 1 : -1, off = r % 2 === 0 ? 0 : 0.5;
+      var ang = (-90 + (sl.idx + off) * 360 / sl.n + pageSpin * dir + galSpin.a * (0.8 + 0.1 * r)) * Math.PI / 180;
+      var depth = 2 - r;
+      var x = C + dx * depth + RADII[r] * Math.cos(ang), y = C + dy * depth + RADII[r] * Math.sin(ang);
+      var sc = 0.85 + 0.15 * pageAlpha;
+      sl.o.g.setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") scale(" + sc.toFixed(3) + ")");
+      sl.o.g.setAttribute("opacity", pageAlpha.toFixed(3));
+    }
+    gHub.setAttribute("transform", "translate(" + (dx * 3).toFixed(2) + " " + (dy * 3).toFixed(2) + ")");
+    gDash.setAttribute("transform", "rotate(" + (-phase * 2).toFixed(2) + " 200 200)");
+    svg.style.transform = (tilt.x || tilt.y)
+      ? "perspective(900px) rotateX(" + tilt.x.toFixed(2) + "deg) rotateY(" + tilt.y.toFixed(2) + "deg)"
+      : "";
+  }
+
+  // ---------- pointer input
+  var pointer = { down: false, active: false, id: null, sx: 0, sy: 0, lx: 0, ly: 0, la: 0, lt: 0, onHub: false, path: [] };
+
+  function local(e) {
+    var rc = box.getBoundingClientRect();
+    var size = Math.min(rc.width, rc.height) || 1;
+    var sc = 400 / size;
+    return { x: (e.clientX - (rc.left + rc.width / 2)) * sc + C, y: (e.clientY - (rc.top + rc.height / 2)) * sc + C };
+  }
+  function angleOf(p) { return Math.atan2(p.y - C, p.x - C) * 180 / Math.PI; }
+  function dist(p) { return Math.hypot(p.x - C, p.y - C); }
+  function spinner() { return mode === "home" ? homeSpin : galSpin; }
+
+  svg.addEventListener("pointerdown", function (e) {
+    stopDemo();
+    pointer.down = true; pointer.active = false; pointer.id = e.pointerId;
+    try { svg.setPointerCapture(e.pointerId); } catch (x) {}
+    var p = local(e);
+    pointer.sx = pointer.lx = e.clientX; pointer.sy = pointer.ly = e.clientY;
+    pointer.la = angleOf(p); pointer.lt = e.timeStamp; pointer.path = [p];
+    pointer.onHub = dist(p) < (mode === "home" ? 64 : 36);
+    spinner().hold();
+    if (mode === "galaxy") { tilt.held = true; tilt.gx = tilt.x; tilt.gy = tilt.y; }
+    svg.classList.add("grabbing");
+  });
+
+  svg.addEventListener("pointermove", function (e) {
+    if (!pointer.down || e.pointerId !== pointer.id) return;
+    var p = local(e);
+    pointer.path.push(p);
+    if (!pointer.active && Math.hypot(e.clientX - pointer.sx, e.clientY - pointer.sy) > 6) {
+      pointer.active = true; pointer.la = angleOf(p); pointer.lt = e.timeStamp;
+    }
+    if (!pointer.active) return;
+    var sp = spinner();
+    var a = angleOf(p), da = a - pointer.la;
+    if (da > 180) da -= 360; if (da < -180) da += 360;
+    var dt = Math.max(1, e.timeStamp - pointer.lt);
+    pointer.la = a; pointer.lt = e.timeStamp;
+    if (dist(p) > (mode === "home" ? 70 : 50)) {      // ignore the jumpy zone near the centre
+      sp.t += da;
+      sp.v = 0.7 * sp.v + 0.3 * (da / dt);
+    } else sp.v *= 0.5;
+    if (mode === "galaxy") {
+      tilt.gy = Math.max(-60, Math.min(60, tilt.gy + (e.clientX - pointer.lx) * 0.3));
+      tilt.gx = Math.max(-60, Math.min(60, tilt.gx - (e.clientY - pointer.ly) * 0.3));
+    }
+    pointer.lx = e.clientX; pointer.ly = e.clientY;
+  });
+
+  function pageSwipe() {
+    var P = pointer.path; if (P.length < 3) return 0;
+    var a = P[0], b = P[P.length - 1], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    if (len < 90) return 0;                          // ~22% of the orbit
+    var maxDev = 0;
+    for (var i = 1; i < P.length; i++) {
+      var dev = Math.abs((P[i].x - a.x) * dy - (P[i].y - a.y) * dx) / len;
+      if (dev > maxDev) maxDev = dev;
+    }
+    if (maxDev > len * 0.12) return 0;
+    return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 1 : -1) : (dy < 0 ? 1 : -1);
+  }
+
+  function end(e) {
+    if (!pointer.down || (e && e.pointerId !== pointer.id)) return;
+    pointer.down = false;
+    svg.classList.remove("grabbing");
+    var sp = spinner();
+    if (!pointer.active) {
+      if (pointer.onHub) setMode(mode === "home" ? "galaxy" : "home");
+    } else {
+      var swipe = mode === "galaxy" ? pageSwipe() : 0;
+      if (swipe) { sp.v = 0; goPage(swipe); }
+      else if (e && e.timeStamp - pointer.lt < 80 && Math.abs(sp.v) > 0.03) {
+        sp.v = Math.max(-2.5, Math.min(2.5, sp.v)); sp.fling = true;
+      }
+    }
+    tilt.held = false;                               // spring back flat
+    lastInteract = performance.now();
+  }
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+
+  // ---------- self-running demo when idle
+  var demo = null;
+  function stopDemo() { demo = null; lastInteract = performance.now(); }
+  function demoStep(now, dt) {
+    if (pointer.down) return;
+    if (!demo) {
+      // the automatic demo respects "reduce motion"; the Watch demo button always works
+      if (!reduce && now - lastInteract > 7000) demo = { t0: now, done: {} };
+      else return;
+    }
+    var t = now - demo.t0, D = demo.done;
+    function once(key, at, fn) { if (t >= at && !D[key]) { D[key] = true; fn(); } }
+    once("flick", 0, function () { homeSpin.v = 0.5; homeSpin.fling = true; });
+    once("open", 2600, function () { setMode("galaxy"); });
+    if (t > 3400 && t < 5200) {                      // simulated drag: tilt + spin
+      var u = (t - 3400) / 1800;
+      tilt.held = true;
+      tilt.gx = Math.sin(u * Math.PI * 2) * 22;
+      tilt.gy = Math.sin(u * Math.PI) * 34;
+      galSpin.t += dt * 0.09;
+    }
+    once("release", 5200, function () { tilt.held = false; galSpin.v = 0.45; galSpin.fling = true; });
+    once("page1", 7200, function () { goPage(1); });
+    once("page2", 8800, function () { goPage(1); });
+    once("close", 10600, function () { setMode("home"); });
+    once("restart", 11000, function () { demo = null; lastInteract = now; });
+  }
+
+  // pause when off screen / tab hidden
+  function setRunning(r) {
+    if (r === running) return;
+    running = r;
+    if (r) { last = performance.now(); requestAnimationFrame(frame); }
+  }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es) { setRunning(es[0].isIntersecting && !document.hidden); }).observe(svg);
+  }
+  document.addEventListener("visibilitychange", function () { setRunning(!document.hidden); });
+
+  var demoBtn = document.getElementById("demoBtn");
+  if (demoBtn) demoBtn.addEventListener("click", function () {
+    setMode("home");
+    demo = { t0: performance.now(), done: {} };
+  });
+
+  renderPageLabels();
+  render();
+  requestAnimationFrame(frame);
+
+  // ---------- live clock in the mock
+  function pad(v) { return (v < 10 ? "0" : "") + v; }
+  function tick() {
     var d = new Date();
     document.getElementById("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
     var days = ["SUN","MON","TUE","WED","THU","FRI","SAT"], mons = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
     document.getElementById("date").textContent = days[d.getDay()] + " · " + pad(d.getDate()) + " " + mons[d.getMonth()] + " " + d.getFullYear();
+    var h = d.getHours();
+    var hi = document.querySelector(".s-hi");
+    if (hi) hi.textContent = h >= 5 && h < 12 ? "GOOD MORNING" : h < 17 && h >= 12 ? "GOOD AFTERNOON" : h < 22 && h >= 17 ? "GOOD EVENING" : "LATE SHIFT";
   }
   tick(); setInterval(tick, 15000);
 
-  // latest version from GitHub Releases
+  // ---------- latest version from GitHub Releases
   fetch("https://api.github.com/repos/shatheitguy/alfa-launcher/releases/latest")
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(j){ if (j && j.tag_name) document.getElementById("ver").textContent = j.tag_name; })
-    .catch(function(){});
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { if (j && j.tag_name) document.getElementById("ver").textContent = j.tag_name; })
+    .catch(function () {});
 })();
 </script>
 </body>
