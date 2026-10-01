@@ -270,7 +270,9 @@ class SettingsActivity : Activity() {
         actionRow(card, "Check for updates",
             if (known != null) "▲ $known available" else "Installed v${Updater.currentName(this)}",
             if (known != null) "Update" else null) {
-            startActivity(Intent(this, ToolsActivity::class.java).putExtra(ToolsActivity.EXTRA_TOOL, ToolsActivity.TOOL_UPDATE))
+            startActivity(Intent(this, ToolsActivity::class.java)
+                .putExtra(ToolsActivity.EXTRA_TOOL, ToolsActivity.TOOL_UPDATE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         line(card)
         toggleRow(card, "Auto-check", "Look for new versions every 12 hours", "auto_update", true)
@@ -283,7 +285,7 @@ class SettingsActivity : Activity() {
             if (isDefault) null else "Set") { requestDefault() }
         line(card)
         actionRow(card, "IT Tools", "Network, ping, ports, subnet, device info…", null) {
-            startActivity(Intent(this, ToolsActivity::class.java))
+            startActivity(Intent(this, ToolsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         line(card)
         actionRow(card, "Android settings", "Open the phone's system settings", null) {
