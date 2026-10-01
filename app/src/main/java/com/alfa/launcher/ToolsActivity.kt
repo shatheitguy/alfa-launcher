@@ -331,7 +331,9 @@ class ToolsActivity : Activity() {
         add(info, 14)
 
         var release: Updater.Release? = null
-        val busy = false
+        var busy = false
+        var downloaded = false
+        val progress = add(tv("", 11f, accent, mono = true), 12)
 
         lateinit var action: TextView
         lateinit var check: () -> Unit
@@ -343,13 +345,50 @@ class ToolsActivity : Activity() {
         }
 
         action = button("Download update") {
-            val rel = release ?: return@button
-            try {
-                Updater.downloadInBrowser(this, rel)
-                toast("Downloading in your browser — open it when done and tap Update")
-            } catch (e: Exception) {
-                toast("No browser available")
+            if (downloaded) {
+                // finished: the install happens from the system download (it has the install permission)
+                Updater.openDownloads(this)
+                return@button
             }
+            val rel = release ?: return@button
+            if (busy) return@button
+            val id = try { Updater.enqueue(this, rel) } catch (e: Exception) { -1L }
+            if (id < 0) {
+                progress.text = "download manager unavailable — opening browser"
+                try { Updater.downloadInBrowser(this, rel) } catch (e: Exception) { toast("No browser available") }
+                return@button
+            }
+            busy = true
+            setAction("Downloading…", false)
+            val poll = object : Runnable {
+                override fun run() {
+                    if (isDestroyed) return
+                    val st = Updater.progress(this@ToolsActivity, id)
+                    when (st.state) {
+                        Updater.DlState.RUNNING -> {
+                            progress.text = if (st.total > 0) {
+                                String.format(Locale.US, "%s  %.1f / %.1f MB  %d%%", bar(st.done, st.total),
+                                    st.done / 1048576.0, st.total / 1048576.0, (st.done * 100 / st.total).toInt())
+                            } else "starting…"
+                            main.postDelayed(this, 250)
+                        }
+                        Updater.DlState.DONE -> {
+                            busy = false
+                            downloaded = true
+                            progress.text = "${bar(1, 1)}  downloaded ✓\n\n" +
+                                "Tap the “ALFA Launcher ${rel.tag}” notification (or the button below) and choose Update."
+                            setAction("Install update", true)
+                            Updater.openDownloads(this@ToolsActivity)
+                        }
+                        Updater.DlState.FAILED -> {
+                            busy = false
+                            progress.text = "download failed (${st.reason}). Tap to retry."
+                            setAction("Retry download", true)
+                        }
+                    }
+                }
+            }
+            main.post(poll)
         }
 
         check = {
@@ -384,7 +423,10 @@ class ToolsActivity : Activity() {
         row(
             button("Check again", primary = false) { if (!busy) check() },
             button("Reinstall latest", primary = false) {
-                try { Updater.downloadInBrowser(this, release) } catch (e: Exception) { toast("No browser available") }
+                if (release == null || busy) return@button
+                downloaded = false
+                setAction("Download update", true)
+                action.performClick()
             },
             top = 8,
         )
@@ -405,11 +447,16 @@ class ToolsActivity : Activity() {
             startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/${Updater.REPO}/releases")))
         }, top = 8)
 
-        add(tv("Updates come from github.com/${Updater.REPO}. The APK downloads in your browser; open it and tap Update. " +
+        add(tv("Updates come from github.com/${Updater.REPO}. ALFA downloads the APK; tap the finished download and choose Update. " +
             "It is signed with the same key, so your pins, dock and settings are kept.",
             11f, dimmer), 16)
 
         check()
+    }
+
+    private fun bar(done: Long, total: Long, n: Int = 16): String {
+        val f = ((done * n) / total.coerceAtLeast(1)).toInt().coerceIn(0, n)
+        return "█".repeat(f) + "░".repeat(n - f)
     }
 
     // ---------- network ----------
