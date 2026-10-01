@@ -25,7 +25,7 @@ object IconStyler {
 
     val STYLES = listOf(NEON to "Neon glyph", COLOUR to "Colour orb", ORIGINAL to "Original icons")
 
-    fun render(res: Resources, src: Drawable, style: String, accent: Int): Drawable {
+    fun render(res: Resources, src: Drawable, style: String, accent: Int, clone: Boolean = false): Drawable {
         if (style == ORIGINAL) return src
         val s = (64 * res.displayMetrics.density).toInt()
         val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
@@ -78,6 +78,26 @@ object IconStyler {
         ring.strokeWidth = ringW * 1.2f
         ring.strokeCap = Paint.Cap.ROUND
         c.drawArc(ringW, ringW, s - ringW, s - ringW, -100f, 20f, false, ring)
+
+        if (clone) {
+            // "2" chip for dual / cloned apps
+            val br = s * 0.17f
+            val bx = s - br - 1f
+            val by = s - br - 1f
+            val chip = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+            c.drawCircle(bx, by, br, chip)
+            chip.style = Paint.Style.STROKE
+            chip.strokeWidth = s * 0.025f
+            chip.color = Color.rgb(9, 9, 12)
+            c.drawCircle(bx, by, br, chip)
+            val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK
+                textAlign = Paint.Align.CENTER
+                textSize = br * 1.25f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            c.drawText("2", bx, by - (t.descent() + t.ascent()) / 2f, t)
+        }
 
         return BitmapDrawable(res, bmp)
     }

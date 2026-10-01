@@ -57,17 +57,21 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
 
     private var phase = 0f
     private var running = false
+    private var lastFrameMs = 0L
     private val frame = object : Runnable {
         override fun run() {
             if (!running) return
-            phase = (phase + 0.25f) % 360f
-            if (drift && !spinner.dragging) spinner.add(0.15f) else invalidate()
-            postDelayed(this, 40)
+            val now = System.nanoTime() / 1_000_000L
+            val dt = (now - lastFrameMs).coerceIn(0L, 64L)
+            lastFrameMs = now
+            phase = (phase + dt * 0.006f) % 360f
+            if (drift && !spinner.dragging) spinner.add(dt * 0.004f) else invalidate()
+            postOnAnimation(this)
         }
     }
 
     /** Finger spin with momentum. */
-    val spinner = Spinner(this) { requestLayout(); invalidate() }
+    val spinner = Spinner(this) { positionIcons(); invalidate() }
     /** Slow automatic rotation of the app ring while idle. */
     var drift = false
     var spinEnabled: Boolean
@@ -126,7 +130,10 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
                 setPadding(p, p, p, p)
                 contentDescription = app.label
                 setOnClickListener { onClick(app) }
-                setOnLongClickListener { onLong(it, app); true }
+                setOnLongClickListener {
+                    it.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    onLong(it, app); true
+                }
             }
             icons.add(iv)
             addView(iv, LayoutParams(iconSize, iconSize))
@@ -158,17 +165,25 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         orbitR = outerR - 16 * d - iconSize / 2f
         hubR = (orbitR - iconSize / 2f - 16 * d).coerceAtLeast(30 * d)
 
+        // icons sit at the origin; positionIcons() moves them with translations (no relayout while spinning)
+        icons.forEach { it.layout(0, 0, iconSize, iconSize) }
+        val hs = (hubR * 2).toInt()
+        hub.layout((cx - hubR).toInt(), (cy - hubR).toInt(), (cx - hubR).toInt() + hs, (cy - hubR).toInt() + hs)
+        positionIcons()
+    }
+
+    private fun positionIcons() {
         val n = icons.size
         icons.forEachIndexed { i, v ->
             // offset by half a step so the 3 and 9 o'clock gauges stay clear
             val a = Math.toRadians(-90.0 + (i + 0.5) * 360.0 / n + spinner.angle)
-            val x = (cx + orbitR * cos(a)).toInt() - iconSize / 2
-            val y = (cy + orbitR * sin(a)).toInt() - iconSize / 2
-            v.layout(x, y, x + iconSize, y + iconSize)
+            v.translationX = (cx + orbitR * cos(a)).toFloat() - iconSize / 2f
+            v.translationY = (cy + orbitR * sin(a)).toFloat() - iconSize / 2f
         }
-        val hs = (hubR * 2).toInt()
-        hub.layout((cx - hubR).toInt(), (cy - hubR).toInt(), (cx - hubR).toInt() + hs, (cy - hubR).toInt() + hs)
     }
+
+    private var glow: RadialGradient? = null
+    private var glowKey = 0L
 
     private fun alpha(c: Int, a: Int) = Color.argb(a, Color.red(c), Color.green(c), Color.blue(c))
 
@@ -176,7 +191,12 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         if (outerR <= 0f) return
 
         // soft core glow
-        fill.shader = RadialGradient(cx, cy, outerR, alpha(accent, 60), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        val key = (cx.toLong() shl 40) xor (cy.toLong() shl 20) xor outerR.toLong() xor accent.toLong()
+        if (glow == null || key != glowKey) {
+            glowKey = key
+            glow = RadialGradient(cx, cy, outerR, alpha(accent, 60), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        }
+        fill.shader = glow
         canvas.drawCircle(cx, cy, outerR, fill)
         fill.shader = null
 
@@ -287,7 +307,8 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
     private fun start() {
         if (running) return
         running = true
-        post(frame)
+        lastFrameMs = System.nanoTime() / 1_000_000L
+        postOnAnimation(frame)
     }
 
     private fun stop() {

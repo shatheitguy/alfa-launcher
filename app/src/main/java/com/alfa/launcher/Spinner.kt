@@ -1,19 +1,23 @@
 package com.alfa.launcher
 
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.floor
 import kotlin.math.hypot
 
 /**
- * Turns a circular drag into a rotation angle, with fling momentum.
- * The host view feeds it touch events and redraws in [onSpin].
+ * Turns a circular drag into a rotation angle, with fling momentum and a light
+ * haptic tick every [tickDeg] degrees. The host redraws in [onSpin].
  */
 class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
 
     var enabled = true
+    var haptics = true
+    var tickDeg = 30f
     var angle = 0f
         private set
     var dragging = false
@@ -27,6 +31,7 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
     private var velocity = 0f        // degrees per ms
     private var flinging = false
     private var lastFrame = 0L
+    private var lastTick = 0
 
     private val fling = object : Runnable {
         override fun run() {
@@ -35,7 +40,7 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
             val dt = (now - lastFrame).coerceIn(1L, 48L)
             lastFrame = now
             add(velocity * dt)
-            velocity *= Math.pow(0.9965, dt.toDouble()).toFloat()
+            velocity *= Math.pow(0.9968, dt.toDouble()).toFloat()
             if (abs(velocity) < 0.004f) flinging = false else host.postOnAnimation(this)
         }
     }
@@ -45,6 +50,11 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
 
     fun add(deg: Float) {
         angle = (angle + deg) % 360f
+        val t = floor(angle / tickDeg).toInt()
+        if (t != lastTick) {
+            lastTick = t
+            if (haptics && (dragging || flinging)) host.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
         onSpin(angle)
     }
 
@@ -87,7 +97,7 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
         add(da)
     }
 
-    /** End the drag without momentum (e.g. the gesture turned out to be a page swipe). */
+    /** End the drag without momentum (page swipe, or a second finger took over). */
     fun endWithoutFling() {
         dragging = false
         velocity = 0f
