@@ -97,6 +97,16 @@ class Spinner(private val host: View, private val onSpin: (Float) -> Unit) {
         add(da)
     }
 
+    /** Start a momentum spin from outside (e.g. a released 3D drag). [degPerMs] signed. */
+    fun flingWith(degPerMs: Float) {
+        if (abs(degPerMs) < 0.02f) return
+        stop()
+        velocity = degPerMs.coerceIn(-2.5f, 2.5f)
+        flinging = true
+        lastFrame = System.nanoTime() / 1_000_000L
+        host.postOnAnimation(fling)
+    }
+
     /** End the drag without momentum (page swipe, or a second finger took over). */
     fun endWithoutFling() {
         dragging = false

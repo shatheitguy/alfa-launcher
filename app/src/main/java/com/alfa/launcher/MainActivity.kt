@@ -216,17 +216,18 @@ class MainActivity : Activity() {
         avatar.clipToOutline = true
         findViewById<View>(R.id.profileRow).setOnClickListener { showProfileDialog() }
 
-        galaxyStage.onTransform = { _, tx, ty ->
+        galaxyStage.onTransform = { z, tx, ty ->
             galaxyView.setDepth(tx, ty)
-            galaxyReset.visibility = if (galaxyStage.isTransformed) View.VISIBLE else View.GONE
+            galaxyReset.visibility = if (kotlin.math.abs(z - 1f) > 0.02f) View.VISIBLE else View.GONE
         }
+        galaxyStage.onRelease = { x, y, vx, vy -> galaxyView.rollFrom(x, y, vx, vy) }
         galaxyReset.setOnClickListener { galaxyStage.reset(true) }
         findViewById<TextView>(R.id.galaxyMode).setOnClickListener {
             val tilt3d = !prefs.getBoolean("galaxy_3d", true)
             prefs.edit().putBoolean("galaxy_3d", tilt3d).apply()
             it.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
             applyGalaxyMode()
-            toast(if (tilt3d) "3D mode: drag to tilt, ‹ › for pages" else "Spin mode: circle to spin, swipe for pages")
+            toast(if (tilt3d) "3D mode: hold and move to tilt, let go to roll" else "Spin mode: circle to spin, swipe for pages")
         }
 
         accent = accentOf(this)
@@ -534,7 +535,7 @@ class MainActivity : Activity() {
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
             when {
-                prefs.getBoolean("galaxy_3d", true) -> "${allApps.size} APPS  ·  DRAG = 3D TILT  ·  PINCH = ZOOM  ·  ‹ › PAGES"
+                prefs.getBoolean("galaxy_3d", true) -> "${allApps.size} APPS  ·  HOLD + MOVE = 3D  ·  FLICK = ROLL  ·  PINCH = ZOOM"
                 prefs.getBoolean("spin", true) -> "${allApps.size} APPS  ·  SPIN  ·  SWIPE ↔  ·  PINCH = ZOOM"
                 else -> "${allApps.size} APPS  ·  SWIPE ↔ PAGES  ·  PINCH = ZOOM"
             }
@@ -617,10 +618,10 @@ class MainActivity : Activity() {
         }
     }
 
+    /** No uninstall permission: open the app's system info page, which has the Uninstall button. */
     private fun uninstall(app: AppEntry) {
-        val i = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.pkg}"))
-        if (app.user != null) i.putExtra(Intent.EXTRA_USER, app.user)
-        startSafe(i)
+        appInfo(app)
+        toast("Tap Uninstall on this screen")
     }
 
     private fun showAppMenu(anchor: View, app: AppEntry) {

@@ -92,8 +92,6 @@ class ToolsActivity : Activity() {
         Tool(TOOL_UPDATE, "App update", "Get the latest ALFA build"),
     )
 
-    private var pendingApk: File? = null
-
     private val main = Handler(Looper.getMainLooper())
     private val pool = Executors.newCachedThreadPool()
     private var accent = 0
@@ -319,16 +317,6 @@ class ToolsActivity : Activity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        // Returning from "allow install unknown apps": continue the install.
-        val apk = pendingApk
-        if (apk != null && current == TOOL_UPDATE && Build.VERSION.SDK_INT >= 26 && packageManager.canRequestPackageInstalls()) {
-            pendingApk = null
-            Updater.install(this, apk)
-        }
-    }
-
     // ---------- self update ----------
 
     private fun updateTool() {
@@ -342,9 +330,8 @@ class ToolsActivity : Activity() {
         info.addView(status, lp(8))
         add(info, 14)
 
-        val progress = add(tv("", 11f, accent, mono = true), 12)
         var release: Updater.Release? = null
-        var busy = false
+        val busy = false
 
         lateinit var action: TextView
         lateinit var check: () -> Unit
@@ -355,37 +342,13 @@ class ToolsActivity : Activity() {
             action.alpha = if (enabled) 1f else 0.4f
         }
 
-        action = button("Download & install") {
+        action = button("Download update") {
             val rel = release ?: return@button
-            if (busy) return@button
-            busy = true
-            cancelled = false
-            setAction("Downloading…", false)
-            bg {
-                try {
-                    val file = Updater.download(this, rel, { done, total ->
-                        ui {
-                            progress.text = if (total > 0) {
-                                String.format(Locale.US, "%s  %.1f / %.1f MB  %d%%", bar(done, total),
-                                    done / 1048576.0, total / 1048576.0, (done * 100 / total).toInt())
-                            } else String.format(Locale.US, "%.1f MB", done / 1048576.0)
-                        }
-                    }, { cancelled })
-                    ui {
-                        busy = false
-                        setAction("Install ${rel.tag}", true)
-                        if (!Updater.install(this, file)) {
-                            pendingApk = file
-                            toast("Allow ALFA to install apps, then come back")
-                        }
-                    }
-                } catch (e: Exception) {
-                    ui {
-                        busy = false
-                        progress.text = "error: ${e.message}"
-                        setAction("Retry download", true)
-                    }
-                }
+            try {
+                Updater.downloadInBrowser(this, rel)
+                toast("Downloading in your browser — open it when done and tap Update")
+            } catch (e: Exception) {
+                toast("No browser available")
             }
         }
 
@@ -405,13 +368,13 @@ class ToolsActivity : Activity() {
                             append("STATUS      ").append(if (newer) "update available" else "up to date")
                             if (rel.notes.isNotEmpty()) append("\n\n").append(rel.notes)
                         }
-                        if (newer) setAction("Download & install ${rel.tag}", true)
+                        if (newer) setAction("Download update ${rel.tag}", true)
                         else setAction("Up to date", false)
                     }
                 } catch (e: Exception) {
                     ui {
                         status.text = "check failed: ${e.message}"
-                        setAction("Download & install", false)
+                        setAction("Download update", false)
                     }
                 }
             }
@@ -421,11 +384,7 @@ class ToolsActivity : Activity() {
         row(
             button("Check again", primary = false) { if (!busy) check() },
             button("Reinstall latest", primary = false) {
-                val rel = release
-                if (rel == null || busy) return@button
-                release = rel
-                setAction("Download & install ${rel.tag}", true)
-                action.performClick()
+                try { Updater.downloadInBrowser(this, release) } catch (e: Exception) { toast("No browser available") }
             },
             top = 8,
         )
@@ -446,15 +405,11 @@ class ToolsActivity : Activity() {
             startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/${Updater.REPO}/releases")))
         }, top = 8)
 
-        add(tv("Updates come from github.com/${Updater.REPO}. They are signed with the same key, so your pins, dock and settings are kept.",
+        add(tv("Updates come from github.com/${Updater.REPO}. The APK downloads in your browser; open it and tap Update. " +
+            "It is signed with the same key, so your pins, dock and settings are kept.",
             11f, dimmer), 16)
 
         check()
-    }
-
-    private fun bar(done: Long, total: Long, n: Int = 16): String {
-        val f = ((done * n) / total.coerceAtLeast(1)).toInt().coerceIn(0, n)
-        return "█".repeat(f) + "░".repeat(n - f)
     }
 
     // ---------- network ----------

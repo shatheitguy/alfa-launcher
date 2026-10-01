@@ -24,6 +24,32 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     /** When true, a one-finger drag tilts in 3D instead of reaching the orbit (spin / page swipe). */
     var oneFingerTilt = true
 
+    /** Tilt only lasts while a finger is down; on release it springs back flat. */
+    var springBack = true
+
+    /** Called when a one-finger 3D drag is released: position and velocity (px/ms) in stage coordinates. */
+    var onRelease: (x: Float, y: Float, vx: Float, vy: Float) -> Unit = { _, _, _, _ -> }
+
+    private var spring: android.animation.ValueAnimator? = null
+
+    private fun springFlat() {
+        if (tiltX == 0f && tiltY == 0f) return
+        spring?.cancel()
+        val fromX = tiltX
+        val fromY = tiltY
+        spring = android.animation.ValueAnimator.ofFloat(1f, 0f).apply {
+            duration = 560
+            interpolator = android.view.animation.OvershootInterpolator(1.6f)
+            addUpdateListener {
+                val f = it.animatedValue as Float
+                tiltX = fromX * f
+                tiltY = fromY * f
+                apply()
+            }
+            start()
+        }
+    }
+
     var zoom = 1f
         private set
     var tiltX = 0f
@@ -75,6 +101,7 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private fun stopFling() {
         flinging = false
         removeCallbacks(fling)
+        spring?.cancel()
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -152,21 +179,18 @@ class OrbitStage(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             }
             MotionEvent.ACTION_UP -> {
                 if (single && oneFingerTilt) {
+                    // let go: the flick becomes a spinning roll, and the tilt springs back flat
                     val t = tracker
                     t?.computeCurrentVelocity(1) // px per ms
-                    vx = (t?.xVelocity ?: 0f) * degPerPx
-                    vy = -(t?.yVelocity ?: 0f) * degPerPx
-                    if (abs(vx) > 0.01f || abs(vy) > 0.01f) {
-                        vx = vx.coerceIn(-0.8f, 0.8f)
-                        vy = vy.coerceIn(-0.8f, 0.8f)
-                        flinging = true
-                        lastFrame = System.nanoTime() / 1_000_000L
-                        postOnAnimation(fling)
-                    }
+                    onRelease(ev.x, ev.y, t?.xVelocity ?: 0f, t?.yVelocity ?: 0f)
                 }
+                if (springBack) springFlat()
                 endGesture()
             }
-            MotionEvent.ACTION_CANCEL -> endGesture()
+            MotionEvent.ACTION_CANCEL -> {
+                if (springBack) springFlat()
+                endGesture()
+            }
         }
         return true
     }

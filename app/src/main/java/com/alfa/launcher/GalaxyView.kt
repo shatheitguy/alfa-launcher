@@ -171,6 +171,18 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         invalidate()
     }
 
+    /**
+     * Turns a released drag (position + velocity in px/ms) into a spinning roll:
+     * the tangential part of the flick around the centre becomes angular momentum.
+     */
+    fun rollFrom(x: Float, y: Float, vx: Float, vy: Float) {
+        val rx = x - cx
+        val ry = y - cy
+        val r2 = (rx * rx + ry * ry).coerceAtLeast((90f * d) * (90f * d))
+        val omegaRad = (rx * vy - ry * vx) / r2
+        spinner.flingWith(Math.toDegrees(omegaRad.toDouble()).toFloat() * 0.9f)
+    }
+
     fun next() = goTo(page + 1, 1)
     fun prev() = goTo(page - 1, -1)
 
