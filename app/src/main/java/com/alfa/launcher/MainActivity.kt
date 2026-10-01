@@ -659,7 +659,7 @@ class MainActivity : Activity() {
 
     private fun openSettings() {
         if (galaxy.visibility == View.VISIBLE) closeGalaxy(false)
-        startSafe(Intent(this, SettingsActivity::class.java))
+        startSafe(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** Re-reads everything ALFA OS Settings can change and applies what differs. */
@@ -798,7 +798,7 @@ class MainActivity : Activity() {
     }
 
     private fun openTool(tool: String?) {
-        val i = Intent(this, ToolsActivity::class.java)
+        val i = Intent(this, ToolsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (tool != null) i.putExtra(ToolsActivity.EXTRA_TOOL, tool)
         startSafe(i)
     }

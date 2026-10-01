@@ -144,6 +144,18 @@ class ToolsActivity : Activity() {
         }
     }
 
+    /** Already running in its own task: jump to a requested tool, otherwise keep the current screen. */
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val t = intent?.getStringExtra(EXTRA_TOOL) ?: return
+        if (t != current) {
+            stopWork()
+            openedDirect = true
+            showTool(t)
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         stopWork()

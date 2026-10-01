@@ -57,16 +57,27 @@
             android:name=".InstallReceiver"
             android:exported="false" />
 
+        <!-- Settings and IT Tools run in their own tasks: they show up in Recents and
+             survive switching apps (the launcher's own task is cleared on every Home). -->
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:label="ALFA OS Settings"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.alfa.launcher.settings"
+            android:excludeFromRecents="false"
+            android:autoRemoveFromRecents="true"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Alfa.Tools" />
 
         <activity
             android:name=".ToolsActivity"
             android:exported="false"
+            android:label="IT Tools"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.alfa.launcher.tools"
+            android:excludeFromRecents="false"
+            android:autoRemoveFromRecents="true"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Alfa.Tools"
             android:windowSoftInputMode="adjustResize" />    </application>
