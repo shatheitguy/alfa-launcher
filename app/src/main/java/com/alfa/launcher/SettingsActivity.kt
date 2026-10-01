@@ -247,7 +247,7 @@ class SettingsActivity : Activity() {
 
     private fun homeSection() {
         val card = section("HOME SCREEN", "⌂")
-        toggleRow(card, "IT tools bar", "PING · NET · PORTS shortcuts above the search bar", "show_tools", true)
+        toggleRow(card, "IT Tools button", "One button above the search bar that holds every tool", "show_tools", true)
         line(card)
         toggleRow(card, "Network line", "Connection type and local IP under the clock", "show_net", true)
         line(card)
