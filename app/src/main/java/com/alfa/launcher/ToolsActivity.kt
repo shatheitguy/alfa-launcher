@@ -93,6 +93,19 @@ class ToolsActivity : Activity() {
     )
 
     private val main = Handler(Looper.getMainLooper())
+
+    // self-update: download waiting for the "install apps" permission
+    private var pendingInstall = -1L
+    private var installNow: ((Long) -> Unit)? = null
+
+    override fun onResume() {
+        super.onResume()
+        val id = pendingInstall
+        if (id >= 0 && current == TOOL_UPDATE && Updater.canSelfInstall(this)) {
+            pendingInstall = -1L
+            installNow?.invoke(id)
+        }
+    }
     private val pool = Executors.newCachedThreadPool()
     private var accent = 0
     private lateinit var scroll: ScrollView
@@ -333,6 +346,7 @@ class ToolsActivity : Activity() {
         var release: Updater.Release? = null
         var busy = false
         var downloaded = false
+        var downloadId = -1L
         val progress = add(tv("", 11f, accent, mono = true), 12)
 
         lateinit var action: TextView
@@ -344,10 +358,35 @@ class ToolsActivity : Activity() {
             action.alpha = if (enabled) 1f else 0.4f
         }
 
+        fun install(id: Long) {
+            if (!Updater.canSelfInstall(this)) {
+                pendingInstall = id
+                progress.text = "${bar(1, 1)}  downloaded ✓\n\nAllow ALFA to install apps (one time), then come back — the install continues by itself."
+                setAction("Allow & install", true)
+                try { Updater.requestInstallPermission(this) } catch (e: Exception) { Updater.openDownloads(this) }
+                return
+            }
+            setAction("Installing…", false)
+            bg {
+                try {
+                    Updater.installDownloaded(this, id)
+                    ui {
+                        progress.text = "${bar(1, 1)}  ready — confirm “Update” on the Android prompt."
+                        setAction("Install update", true)
+                    }
+                } catch (e: Exception) {
+                    ui {
+                        progress.text = "install failed (${e.message}). You can also tap the download notification."
+                        setAction("Install update", true)
+                    }
+                }
+            }
+        }
+        installNow = { id -> install(id) }
+
         action = button("Download update") {
             if (downloaded) {
-                // finished: the install happens from the system download (it has the install permission)
-                Updater.openDownloads(this)
+                if (downloadId >= 0) install(downloadId) else Updater.openDownloads(this)
                 return@button
             }
             val rel = release ?: return@button
@@ -359,6 +398,7 @@ class ToolsActivity : Activity() {
                 return@button
             }
             busy = true
+            downloadId = id
             setAction("Downloading…", false)
             val poll = object : Runnable {
                 override fun run() {
@@ -375,10 +415,8 @@ class ToolsActivity : Activity() {
                         Updater.DlState.DONE -> {
                             busy = false
                             downloaded = true
-                            progress.text = "${bar(1, 1)}  downloaded ✓\n\n" +
-                                "Tap the “ALFA Launcher ${rel.tag}” notification (or the button below) and choose Update."
-                            setAction("Install update", true)
-                            Updater.openDownloads(this@ToolsActivity)
+                            progress.text = "${bar(1, 1)}  downloaded ✓"
+                            install(id)
                         }
                         Updater.DlState.FAILED -> {
                             busy = false
@@ -447,7 +485,7 @@ class ToolsActivity : Activity() {
             startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/${Updater.REPO}/releases")))
         }, top = 8)
 
-        add(tv("Updates come from github.com/${Updater.REPO}. ALFA downloads the APK; tap the finished download and choose Update. " +
+        add(tv("Updates come from github.com/${Updater.REPO}. ALFA downloads and installs them itself; you just confirm Update. " +
             "It is signed with the same key, so your pins, dock and settings are kept.",
             11f, dimmer), 16)
 

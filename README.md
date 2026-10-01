@@ -58,7 +58,7 @@ ALFA updates itself from this repo's Releases:
 
 - It checks automatically every 12 h, and an **▲ UPDATE AVAILABLE** chip appears on the home screen when a new build exists.
 - You can also check by hand: long-press the home screen → **Check for updates**, or IT Tools → **App update**.
-- **Download update** opens the APK in your browser. When it finishes, open it and tap **Update**. ALFA itself doesn't ask for install or uninstall permissions.
+- **Download update**: ALFA downloads the new version (with a progress bar) and installs it itself. You only confirm **Update** on the Android prompt. The first time, Android asks you to allow ALFA to install apps.
 - Your orbit, dock, accent and other settings are kept.
 
 ## Install
