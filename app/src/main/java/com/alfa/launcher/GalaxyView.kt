@@ -1,5 +1,7 @@
 package com.alfa.launcher
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
@@ -13,6 +15,7 @@ import android.text.TextUtils
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -24,12 +27,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
  * All-apps view in orbit form: three concentric rings of apps (6 / 12 / 18)
- * around a hub. Swipe left/right to change page; rings spin between pages.
+ * around a hub. Circle-drag spins, a straight left/right swipe changes page.
+ * Items are moved with translations (no relayout) so spinning stays smooth.
+ * [setDepth] adds parallax between rings when the stage is tilted in 3D.
  */
 class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, attrs) {
 
@@ -54,7 +60,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private val slots = ArrayList<LinearLayout>()
 
     // geometry
-    private var scale = 1f
+    private var scale = 0f
     private var cx = 0f
     private var cy = 0f
     private val radii = FloatArray(3)
@@ -63,16 +69,23 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private var itemH = 0
     private var iconPx = 0
 
+    // 3D parallax: offset per depth layer (hub = 3, inner = 2, middle = 1, outer = 0)
+    private var depthX = 0f
+    private var depthY = 0f
+
     // animation state
-    private var spin = 0f        // degrees added to ring angles
+    private var pageSpin = 0f
     private var itemsAlpha = 1f
     private var phase = 0f
     private var running = false
+    private var lastFrameMs = 0L
     private var anim: ValueAnimator? = null
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val dash = DashPathEffect(floatArrayOf(2f * d, 6f * d), 0f)
+    private var glowShader: RadialGradient? = null
+    private var glowKey = 0L
 
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
@@ -82,18 +95,22 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private val frame = object : Runnable {
         override fun run() {
             if (!running) return
-            phase = (phase + 0.2f) % 360f
+            val now = System.nanoTime() / 1_000_000L
+            val dt = (now - lastFrameMs).coerceIn(0L, 64L)
+            lastFrameMs = now
+            phase = (phase + dt * 0.005f) % 360f
             invalidate()
-            postDelayed(this, 40)
+            postOnAnimation(this)
         }
     }
 
-    /** Finger spin with momentum; when disabled, horizontal swipes change page instead. */
-    val spinner = Spinner(this) { requestLayout(); invalidate() }
+    /** Finger spin with momentum; when disabled, any horizontal swipe changes page. */
+    val spinner = Spinner(this) { positionItems(); invalidate() }
     var spinEnabled: Boolean
         get() = spinner.enabled
         set(v) { spinner.enabled = v; if (!v) spinner.stop() }
     private var spinTracking = false
+    private val path = ArrayList<Float>()
 
     init {
         setWillNotDraw(false)
@@ -116,7 +133,6 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         }
         hub.addView(hubRange)
         hub.addView(hubPage)
-        addView(hub)
 
         repeat(perPage) {
             val slot = LinearLayout(context).apply {
@@ -138,6 +154,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             slots.add(slot)
             addView(slot)
         }
+        addView(hub) // on top
     }
 
     fun setApps(list: List<AppEntry>, resetPage: Boolean) {
@@ -146,34 +163,43 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         bind()
     }
 
+    /** tiltX / tiltY in degrees from the 3D stage. */
+    fun setDepth(tiltX: Float, tiltY: Float) {
+        depthX = (tiltY / 55f) * 9f * d
+        depthY = (-tiltX / 55f) * 9f * d
+        positionItems()
+        invalidate()
+    }
+
     fun next() = goTo(page + 1, 1)
     fun prev() = goTo(page - 1, -1)
 
     private fun goTo(target: Int, dir: Int) {
         if (pages <= 1) return
+        performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         val t = (target + pages) % pages
         anim?.cancel()
         val out = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 170
+            duration = 160
             interpolator = AccelerateInterpolator()
             addUpdateListener {
                 val f = it.animatedValue as Float
-                spin = -dir * 40f * f
+                pageSpin = -dir * 45f * f
                 itemsAlpha = 1f - f
                 applyAnim()
             }
         }
-        out.addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(a: android.animation.Animator) {
+        out.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(a: Animator) {
                 if (anim !== out) return
                 page = t
                 bind()
                 val inn = ValueAnimator.ofFloat(1f, 0f).apply {
-                    duration = 260
-                    interpolator = DecelerateInterpolator(2f)
+                    duration = 300
+                    interpolator = DecelerateInterpolator(2.2f)
                     addUpdateListener {
                         val f = it.animatedValue as Float
-                        spin = dir * 40f * f
+                        pageSpin = dir * 45f * f
                         itemsAlpha = 1f - f
                         applyAnim()
                     }
@@ -187,8 +213,13 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     }
 
     private fun applyAnim() {
-        slots.forEach { it.alpha = itemsAlpha }
-        requestLayout()
+        val s = 0.85f + 0.15f * itemsAlpha
+        slots.forEach {
+            it.alpha = itemsAlpha
+            it.scaleX = s
+            it.scaleY = s
+        }
+        positionItems()
         invalidate()
     }
 
@@ -207,7 +238,10 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                 (slot.getChildAt(1) as TextView).text = app.label
                 slot.contentDescription = app.label
                 slot.setOnClickListener { onAppClick(app) }
-                slot.setOnLongClickListener { onAppLongClick(it, app); true }
+                slot.setOnLongClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    onAppLongClick(it, app); true
+                }
             }
         }
         if (pageApps.isEmpty()) {
@@ -219,7 +253,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         }
         hubPage.text = "${page + 1} / $pages"
         onPageChanged(page, pages)
-        requestLayout()
+        invalidate()
     }
 
     // ---------- layout ----------
@@ -231,7 +265,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
 
         // designed for a 430dp circle; scale to fit
         val newScale = (min(w, h) / (430f * d)).coerceIn(0.55f, 1.3f)
-        if (newScale != scale || iconPx == 0) {
+        if (newScale != scale) {
             scale = newScale
             radii[0] = 68f * d * scale
             radii[1] = 124f * d * scale
@@ -252,35 +286,48 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
             hubRange.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f * scale)
             hubPage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f * scale)
         }
-        slots.forEach { slot ->
-            slot.measure(MeasureSpec.makeMeasureSpec(itemW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(itemH, MeasureSpec.EXACTLY))
-        }
-        val hs = MeasureSpec.makeMeasureSpec((hubR * 2).toInt(), MeasureSpec.EXACTLY)
-        hub.measure(hs, hs)
+        val ws = MeasureSpec.makeMeasureSpec(itemW, MeasureSpec.EXACTLY)
+        val hs = MeasureSpec.makeMeasureSpec(itemH, MeasureSpec.EXACTLY)
+        slots.forEach { it.measure(ws, hs) }
+        val hub2 = MeasureSpec.makeMeasureSpec((hubR * 2).toInt(), MeasureSpec.EXACTLY)
+        hub.measure(hub2, hub2)
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         cx = (right - left) / 2f
         cy = (bottom - top) / 2f
-        var idx = 0
-        rings.forEachIndexed { r, n ->
-            val dir = if (r % 2 == 0) 1f else -1f
-            val offset = if (r % 2 == 0) 0.0 else 0.5
-            for (k in 0 until n) {
-                val slot = slots[idx++]
-                // outer rings turn a little faster than inner ones for a parallax feel
-                val user = spinner.angle * (0.8f + 0.1f * r)
-                val a = Math.toRadians(-90.0 + (k + offset) * 360.0 / n + spin * dir + user)
-                val x = (cx + radii[r] * cos(a)).toInt() - itemW / 2
-                // centre the icon (not the label) on the ring
-                val y = (cy + radii[r] * sin(a)).toInt() - iconPx / 2
-                slot.layout(x, y, x + itemW, y + itemH)
-            }
-        }
+        // every item sits at the origin; positionItems() moves it with translations
+        slots.forEach { it.layout(0, 0, itemW, itemH) }
         val hs = (hubR * 2).toInt()
         val hx = (cx - hubR).toInt()
         val hy = (cy - hubR).toInt()
         hub.layout(hx, hy, hx + hs, hy + hs)
+        positionItems()
+    }
+
+    private fun layerX(depth: Int) = cx + depthX * depth
+    private fun layerY(depth: Int) = cy + depthY * depth
+
+    private fun positionItems() {
+        if (itemW == 0) return
+        var idx = 0
+        rings.forEachIndexed { r, n ->
+            val dir = if (r % 2 == 0) 1f else -1f
+            val offset = if (r % 2 == 0) 0.0 else 0.5
+            // outer rings turn a little faster than inner ones for a parallax feel
+            val user = spinner.angle * (0.8f + 0.1f * r)
+            val lx = layerX(2 - r)
+            val ly = layerY(2 - r)
+            for (k in 0 until n) {
+                val slot = slots[idx++]
+                val a = Math.toRadians(-90.0 + (k + offset) * 360.0 / n + pageSpin * dir + user)
+                slot.translationX = (lx + radii[r] * cos(a)).toFloat() - itemW / 2f
+                // centre the icon (not the label) on the ring
+                slot.translationY = (ly + radii[r] * sin(a)).toFloat() - iconPx / 2f
+            }
+        }
+        hub.translationX = depthX * 3
+        hub.translationY = depthY * 3
     }
 
     private fun alpha(c: Int, a: Int) = Color.argb(a, Color.red(c), Color.green(c), Color.blue(c))
@@ -288,38 +335,49 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     override fun onDraw(canvas: Canvas) {
         val outer = radii[2] + 34f * d * scale
         if (outer <= 0f) return
-        fill.shader = RadialGradient(cx, cy, outer, alpha(accent, 55), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, outer, fill)
-        fill.shader = null
 
-        // orbit tracks
+        val key = (cx.toLong() shl 40) xor (cy.toLong() shl 20) xor outer.toLong() xor accent.toLong()
+        if (glowShader == null || key != glowKey) {
+            glowKey = key
+            glowShader = RadialGradient(0f, 0f, outer, alpha(accent, 55), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        }
+        canvas.save()
+        canvas.translate(layerX(0), layerY(0))
+        fill.shader = glowShader
+        canvas.drawCircle(0f, 0f, outer, fill)
+        fill.shader = null
+        canvas.restore()
+
+        // orbit tracks, each on its own depth layer
         stroke.pathEffect = null
         stroke.strokeWidth = 1f * d
-        for (r in radii) {
-            stroke.color = Color.argb(28, 255, 255, 255)
-            canvas.drawCircle(cx, cy, r, stroke)
-        }
+        stroke.color = Color.argb(28, 255, 255, 255)
+        for (r in radii.indices) canvas.drawCircle(layerX(2 - r), layerY(2 - r), radii[r], stroke)
 
         // outer rotating ticks
+        val ox = layerX(0)
+        val oy = layerY(0)
         canvas.save()
-        canvas.rotate(phase + spinner.angle, cx, cy)
+        canvas.rotate(phase + spinner.angle, ox, oy)
         for (i in 0 until 120) {
             val major = i % 10 == 0
             stroke.color = if (major) alpha(accent, 220) else Color.argb(45, 255, 255, 255)
             stroke.strokeWidth = (if (major) 2f else 1f) * d
             val len = (if (major) 8f else 3f) * d
-            canvas.drawLine(cx, cy - outer, cx, cy - outer + len, stroke)
-            canvas.rotate(3f, cx, cy)
+            canvas.drawLine(ox, oy - outer, ox, oy - outer + len, stroke)
+            canvas.rotate(3f, ox, oy)
         }
         canvas.restore()
 
         // dashed ring around the hub, counter-rotating
+        val hx = layerX(3)
+        val hy = layerY(3)
         canvas.save()
-        canvas.rotate(-phase * 2f, cx, cy)
+        canvas.rotate(-phase * 2f, hx, hy)
         stroke.pathEffect = dash
         stroke.strokeWidth = 1.5f * d
         stroke.color = alpha(accent, 140)
-        canvas.drawCircle(cx, cy, hubR + 8f * d, stroke)
+        canvas.drawCircle(hx, hy, hubR + 8f * d, stroke)
         stroke.pathEffect = null
         canvas.restore()
 
@@ -328,36 +386,29 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
         stroke.strokeCap = Paint.Cap.ROUND
         stroke.color = Color.argb(35, 255, 255, 255)
         val rr = hubR + 2.5f * d
-        canvas.drawCircle(cx, cy, rr, stroke)
+        canvas.drawCircle(hx, hy, rr, stroke)
         stroke.color = accent
         val sweep = 360f / pages
-        canvas.drawArc(cx - rr, cy - rr, cx + rr, cy + rr, -90f + page * sweep, sweep, false, stroke)
+        canvas.drawArc(hx - rr, hy - rr, hx + rr, hy + rr, -90f + page * sweep, sweep, false, stroke)
         stroke.strokeCap = Paint.Cap.BUTT
     }
 
-    // ---------- horizontal swipe = page ----------
+    // ---------- touch: circle = spin, straight left/right = page ----------
 
-    private fun overHub(x: Float, y: Float) = kotlin.math.hypot(x - cx, y - cy) < hubR
-
-    // finger path of the current gesture: x0, y0, x1, y1, ...
-    private val path = ArrayList<Float>()
+    private fun overHub(x: Float, y: Float) = hypot(x - cx, y - cy) < hubR
 
     private fun record(ev: MotionEvent) {
         if (path.size < 400) { path.add(ev.x); path.add(ev.y) }
     }
 
-    /**
-     * Distinguishes a page swipe from a spin: a page swipe is long, mostly horizontal
-     * and nearly straight; a spin follows the curve of the ring.
-     * Returns 1 = next page, -1 = previous page, 0 = spin.
-     */
+    /** 1 = next page, -1 = previous page, 0 = it was a spin. */
     private fun pageSwipe(): Int {
         if (path.size < 4) return 0
         val x0 = path[0]
         val y0 = path[1]
         val dx = path[path.size - 2] - x0
         val dy = path[path.size - 1] - y0
-        val len = kotlin.math.hypot(dx, dy)
+        val len = hypot(dx, dy)
         if (abs(dx) < width * 0.3f || abs(dx) < abs(dy) * 2f || len == 0f) return 0
         var maxDev = 0f
         var i = 2
@@ -381,7 +432,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                         record(ev)
                     }
                 }
-                MotionEvent.ACTION_MOVE -> if (spinTracking) {
+                MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
                     record(ev)
                     return spinner.checkStart(ev, cx, cy)
                 }
@@ -410,7 +461,7 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                     path.clear()
                     record(ev)
                 }
-                MotionEvent.ACTION_MOVE -> if (spinTracking) {
+                MotionEvent.ACTION_MOVE -> if (spinTracking && ev.pointerCount == 1) {
                     record(ev)
                     spinner.checkStart(ev, cx, cy)
                     spinner.onMove(ev, cx, cy)
@@ -427,7 +478,8 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
                     spinTracking = false
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    if (spinTracking) spinner.onUp()
+                    // usually a second finger: the 3D stage takes over
+                    spinner.endWithoutFling()
                     spinTracking = false
                 }
             }
@@ -453,7 +505,8 @@ class GalaxyView(context: Context, attrs: AttributeSet?) : FrameLayout(context, 
     private fun start() {
         if (running) return
         running = true
-        post(frame)
+        lastFrameMs = System.nanoTime() / 1_000_000L
+        postOnAnimation(frame)
     }
 
     private fun stop() {

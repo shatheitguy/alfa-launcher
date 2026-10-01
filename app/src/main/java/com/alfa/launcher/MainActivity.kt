@@ -24,6 +24,22 @@ import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
 import android.os.SystemClock
+import android.os.Process
+import android.os.UserHandle
+import android.os.UserManager
+import android.content.pm.LauncherApps
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Outline
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
+import android.app.AlertDialog
+import android.view.ViewOutlineProvider
+import java.io.File
+import java.io.IOException
+import java.util.Calendar
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.MediaStore
@@ -55,6 +71,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQ_HOME = 42
+        private const val REQ_LOGO = 43
         private const val MAX_DOCK = 5
         val ACCENTS = listOf(
             "Crimson" to "#FF2D3D",
@@ -107,7 +124,17 @@ class MainActivity : Activity() {
     private lateinit var galaxySearch: EditText
     private lateinit var galaxyCount: TextView
     private lateinit var galaxyPage: TextView
+    private lateinit var galaxyStage: OrbitStage
+    private lateinit var galaxyReset: View
+    private lateinit var avatar: ImageView
+    private lateinit var avatarFrame: View
+    private lateinit var greeting: TextView
+    private lateinit var profileName: TextView
     private lateinit var menuAnchor: View
+    private var profilePreview: ImageView? = null
+
+    private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
+    private val userManager by lazy { getSystemService(UserManager::class.java) }
 
     private var rawApps: List<AppEntry> = emptyList()   // original icons
     private var allApps: List<AppEntry> = emptyList()   // styled icons
@@ -118,8 +145,25 @@ class MainActivity : Activity() {
     private var styleJob = 0
     private var tickCount = 0
 
-    private val pkgReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) = loadApps()
+    // app changes in ANY profile (main, work, dual/clone apps)
+    private val appsCallback = object : LauncherApps.Callback() {
+        override fun onPackageRemoved(packageName: String, user: UserHandle) = scheduleReload()
+        override fun onPackageAdded(packageName: String, user: UserHandle) = scheduleReload()
+        override fun onPackageChanged(packageName: String, user: UserHandle) = scheduleReload()
+        override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = scheduleReload()
+        override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = scheduleReload()
+    }
+
+    // profiles being added / removed / paused (work profile, dual apps)
+    private val profileReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) = scheduleReload()
+    }
+
+    private val reload = Runnable { loadApps() }
+
+    private fun scheduleReload() {
+        handler.removeCallbacks(reload)
+        handler.postDelayed(reload, 400)
     }
 
     private val tick = object : Runnable {
@@ -158,7 +202,25 @@ class MainActivity : Activity() {
         galaxySearch = findViewById(R.id.galaxySearch)
         galaxyCount = findViewById(R.id.galaxyCount)
         galaxyPage = findViewById(R.id.galaxyPage)
+        galaxyStage = findViewById(R.id.galaxyStage)
+        galaxyReset = findViewById(R.id.galaxyReset)
+        avatar = findViewById(R.id.avatar)
+        avatarFrame = findViewById(R.id.avatarFrame)
+        greeting = findViewById(R.id.greeting)
+        profileName = findViewById(R.id.profileName)
         menuAnchor = findViewById(R.id.menuAnchor)
+
+        avatar.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+        }
+        avatar.clipToOutline = true
+        findViewById<View>(R.id.profileRow).setOnClickListener { showProfileDialog() }
+
+        galaxyStage.onTransform = { _, tx, ty ->
+            galaxyView.setDepth(tx, ty)
+            galaxyReset.visibility = if (galaxyStage.isTransformed) View.VISIBLE else View.GONE
+        }
+        galaxyReset.setOnClickListener { galaxyStage.reset(true) }
 
         accent = accentOf(this)
         iconStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
@@ -209,18 +271,21 @@ class MainActivity : Activity() {
 
         buildToolsRow()
 
+        launcherApps?.registerCallback(appsCallback, handler)
         val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED)
-            addAction(Intent.ACTION_PACKAGE_CHANGED)
-            addDataScheme("package")
+            addAction(Intent.ACTION_MANAGED_PROFILE_ADDED)
+            addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED)
+            addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE)
+            addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE)
+            addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED)
         }
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(pkgReceiver, filter, Context.RECEIVER_EXPORTED)
+            registerReceiver(profileReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
-            registerReceiver(pkgReceiver, filter)
+            registerReceiver(profileReceiver, filter)
         }
 
+        refreshProfile()
         applyAccent()
         applyBackground()
         applySpin()
@@ -269,7 +334,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(pkgReceiver)
+        unregisterReceiver(profileReceiver)
+        launcherApps?.unregisterCallback(appsCallback)
         handler.removeCallbacksAndMessages(null)
         io.shutdown()
         super.onDestroy()
@@ -290,6 +356,9 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_HOME && !isDefaultLauncher()) {
             startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
+        }
+        if (requestCode == REQ_LOGO && resultCode == RESULT_OK) {
+            data?.data?.let { importLogo(it) }
         }
     }
 
@@ -320,17 +389,11 @@ class MainActivity : Activity() {
     // ---------------- apps ----------------
 
     private fun loadApps() {
+        val style = iconStyle
+        val color = accent
         io.execute {
-            val pm = packageManager
-            val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            @Suppress("DEPRECATION")
-            val list = pm.queryIntentActivities(query, 0)
-                .filter { it.activityInfo.packageName != packageName }
-                .map {
-                    AppEntry(it.loadLabel(pm).toString(), it.activityInfo.packageName, it.activityInfo.name, it.loadIcon(pm))
-                }
-                .sortedBy { it.label.lowercase(Locale.ROOT) }
-            val styled = styleAll(list, iconStyle, accent)
+            val list = queryAllProfiles().sortedBy { it.label.lowercase(Locale.ROOT) }
+            val styled = styleAll(list, style, color)
             handler.post {
                 rawApps = list
                 publishApps(styled, resetPage = false)
@@ -338,8 +401,57 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Apps from every profile on the device: main user, work profile, and the
+     * "Dual apps / App clone / Dual Messenger" profiles used for cloned WhatsApp etc.
+     */
+    private fun queryAllProfiles(): List<AppEntry> {
+        val me = Process.myUserHandle()
+        val la = launcherApps
+        val um = userManager
+        val out = ArrayList<AppEntry>()
+        if (la != null && um != null) {
+            val profiles = try { um.userProfiles } catch (e: Exception) { listOf(me) }
+            for (user in profiles) {
+                val acts = try { la.getActivityList(null, user) } catch (e: Exception) { emptyList() }
+                val main = user == me
+                val tag = if (main) "" else um.getSerialNumberForUser(user).toString()
+                for (a in acts) {
+                    val cn = a.componentName
+                    if (main && cn.packageName == packageName) continue
+                    var label = a.label?.toString() ?: cn.packageName
+                    if (!main) {
+                        val badged = packageManager.getUserBadgedLabel(label, user).toString()
+                        label = if (badged != label) badged else "$label (dual)"
+                    }
+                    val icon = try { a.getIcon(0) } catch (e: Exception) { null } ?: continue
+                    out.add(AppEntry(label, cn.packageName, cn.className, icon, user, tag))
+                }
+            }
+        }
+        if (out.isEmpty()) {
+            // very old / restricted ROMs: fall back to the main profile only
+            val pm = packageManager
+            val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(query, 0)
+                .filter { it.activityInfo.packageName != packageName }
+                .forEach {
+                    out.add(AppEntry(it.loadLabel(pm).toString(), it.activityInfo.packageName, it.activityInfo.name, it.loadIcon(pm), me))
+                }
+        }
+        return out
+    }
+
     private fun styleAll(list: List<AppEntry>, style: String, color: Int): List<AppEntry> =
-        list.map { it.copy(icon = IconStyler.render(resources, it.icon, style, color)) }
+        list.map { app ->
+            val icon = if (style == IconStyler.ORIGINAL) {
+                if (app.isClone && app.user != null) packageManager.getUserBadgedIcon(app.icon, app.user) else app.icon
+            } else {
+                IconStyler.render(resources, app.icon, style, color, app.isClone)
+            }
+            app.copy(icon = icon)
+        }
 
     private fun publishApps(styled: List<AppEntry>, resetPage: Boolean) {
         allApps = styled
@@ -368,11 +480,12 @@ class MainActivity : Activity() {
             Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")),
             Intent(MediaStore.ACTION_IMAGE_CAPTURE),
         ).mapNotNull { packageManager.resolveActivity(it, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName }
-        val dockKeys = dockPkgs.mapNotNull { p -> allApps.firstOrNull { it.pkg == p } }.map { it.key }.distinct()
-        var orbitKeys = DEFAULT_ORBIT.mapNotNull { p -> allApps.firstOrNull { it.pkg == p } }
+        val mainApps = allApps.filter { !it.isClone }
+        val dockKeys = dockPkgs.mapNotNull { p -> mainApps.firstOrNull { it.pkg == p } }.map { it.key }.distinct()
+        var orbitKeys = DEFAULT_ORBIT.mapNotNull { p -> mainApps.firstOrNull { it.pkg == p } }
             .map { it.key }.distinct().filterNot { it in dockKeys }.take(OrbitView.MAX)
         if (orbitKeys.size < OrbitView.MAX) {
-            orbitKeys = (orbitKeys + allApps.map { it.key }.filterNot { it in dockKeys || it in orbitKeys })
+            orbitKeys = (orbitKeys + mainApps.map { it.key }.filterNot { it in dockKeys || it in orbitKeys })
                 .take(OrbitView.MAX)
         }
         setList("dock", dockKeys)
@@ -413,8 +526,8 @@ class MainActivity : Activity() {
         }
         galaxyView.setApps(filtered, resetPage)
         galaxyCount.text = if (q.isEmpty()) {
-            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  CIRCLE TO SPIN  ·  SWIPE ↔ FOR PAGES"
-            else "${allApps.size} APPS  ·  SWIPE ↔ FOR PAGES"
+            if (prefs.getBoolean("spin", true)) "${allApps.size} APPS  ·  SPIN  ·  SWIPE ↔  ·  2 FINGERS: ZOOM / TILT"
+            else "${allApps.size} APPS  ·  SWIPE ↔ PAGES  ·  2 FINGERS: ZOOM / TILT"
         } else {
             "${filtered.size} MATCH  ·  ENTER LAUNCHES FIRST"
         }
@@ -423,15 +536,16 @@ class MainActivity : Activity() {
     private fun openGalaxy(withKeyboard: Boolean) {
         if (galaxy.visibility != View.VISIBLE) {
             swipe.gesturesEnabled = false
+            galaxyStage.reset(false)
             galaxy.visibility = View.VISIBLE
             galaxy.alpha = 0f
-            galaxyView.scaleX = 0.55f
-            galaxyView.scaleY = 0.55f
-            galaxyView.rotation = -25f
+            galaxyStage.scaleX = 0.55f
+            galaxyStage.scaleY = 0.55f
+            galaxyStage.rotation = -25f
             galaxy.animate().alpha(1f).setDuration(200).start()
-            galaxyView.animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(380)
-                .setInterpolator(DecelerateInterpolator(2.2f)).start()
-            home.animate().alpha(0f).setDuration(200).start()
+            galaxyStage.animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(420)
+                .setInterpolator(DecelerateInterpolator(2.4f)).withLayer().start()
+            home.animate().alpha(0f).scaleX(1.08f).scaleY(1.08f).setDuration(240).start()
         }
         if (withKeyboard) {
             galaxySearch.requestFocus()
@@ -450,26 +564,53 @@ class MainActivity : Activity() {
             if (galaxySearch.text.isNotEmpty()) galaxySearch.setText("") else filterApps(true)
         }
         if (animate) {
-            galaxyView.animate().scaleX(0.6f).scaleY(0.6f).rotation(20f).setDuration(220)
-                .setInterpolator(AccelerateInterpolator()).start()
+            galaxyStage.animate().scaleX(0.6f).scaleY(0.6f).rotation(20f).setDuration(220)
+                .setInterpolator(AccelerateInterpolator()).withLayer().start()
             galaxy.animate().alpha(0f).setDuration(220).withEndAction { finish() }.start()
-            home.animate().alpha(1f).setDuration(220).start()
+            home.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260)
+                .setInterpolator(DecelerateInterpolator(2f)).start()
         } else {
             galaxy.animate().cancel()
-            galaxyView.animate().cancel()
+            galaxyStage.animate().cancel()
             home.animate().cancel()
             home.alpha = 1f
+            home.scaleX = 1f
+            home.scaleY = 1f
             finish()
         }
     }
 
     private fun launch(app: AppEntry) {
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(ComponentName(app.pkg, app.cls))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        startSafe(intent)
+        val user = app.user ?: Process.myUserHandle()
+        try {
+            val la = launcherApps ?: throw IllegalStateException()
+            la.startMainActivity(ComponentName(app.pkg, app.cls), user, null, null)
+        } catch (e: Exception) {
+            if (app.isClone) {
+                toast("That profile is paused or locked")
+            } else {
+                val intent = Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(ComponentName(app.pkg, app.cls))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                startSafe(intent)
+            }
+        }
         if (galaxy.visibility == View.VISIBLE) handler.postDelayed({ closeGalaxy(false) }, 400)
+    }
+
+    private fun appInfo(app: AppEntry) {
+        try {
+            launcherApps!!.startAppDetailsActivity(ComponentName(app.pkg, app.cls), app.user ?: Process.myUserHandle(), null, null)
+        } catch (e: Exception) {
+            startSafe(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.pkg}")))
+        }
+    }
+
+    private fun uninstall(app: AppEntry) {
+        val i = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.pkg}"))
+        if (app.user != null) i.putExtra(Intent.EXTRA_USER, app.user)
+        startSafe(i)
     }
 
     private fun showAppMenu(anchor: View, app: AppEntry) {
@@ -496,8 +637,8 @@ class MainActivity : Activity() {
                     else { dockL.add(app.key); orbitL.remove(app.key) }
                     setList("orbit", orbitL); setList("dock", dockL); refreshHome()
                 }
-                3 -> startSafe(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.pkg}")))
-                4 -> startSafe(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.pkg}")))
+                3 -> appInfo(app)
+                4 -> uninstall(app)
             }
             true
         }
@@ -523,6 +664,7 @@ class MainActivity : Activity() {
         val driftOn = prefs.getBoolean("drift", false)
         menu.menu.add(0, 9, 2, if (spinOn) "Orbit spin: ON  (tap to turn off)" else "Orbit spin: OFF  (tap to turn on)")
         menu.menu.add(0, 10, 2, if (driftOn) "Idle drift: ON" else "Idle drift: OFF")
+        menu.menu.add(0, 11, 1, "Profile (name & logo)")
         menu.menu.add(0, 4, 3, "IT tools")
         menu.menu.add(0, 7, 4, "Check for updates")
         menu.menu.add(0, 5, 5, "Default home app")
@@ -541,6 +683,7 @@ class MainActivity : Activity() {
                 5 -> startSafe(Intent(Settings.ACTION_HOME_SETTINGS))
                 6 -> startSafe(Intent(Settings.ACTION_SETTINGS))
                 7 -> openTool(ToolsActivity.TOOL_UPDATE)
+                11 -> showProfileDialog()
                 9 -> {
                     prefs.edit().putBoolean("spin", !spinOn).apply()
                     applySpin()
@@ -557,6 +700,150 @@ class MainActivity : Activity() {
             true
         }
         menu.show()
+    }
+
+    // ---------------- profile ----------------
+
+    private val logoFile get() = File(filesDir, "profile_logo.png")
+
+    private fun refreshProfile() {
+        val name = prefs.getString("profile_name", "")?.trim().orEmpty()
+        profileName.text = if (name.isEmpty()) "Tap to set profile" else name
+        profileName.alpha = if (name.isEmpty()) 0.6f else 1f
+        avatar.setImageBitmap(avatarBitmap(name))
+        avatarFrame.backgroundTintList = null
+        (avatarFrame.background?.mutate() as? android.graphics.drawable.GradientDrawable)
+            ?.setStroke(dp(2), accent)
+        updateGreeting()
+    }
+
+    private fun updateGreeting() {
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        greeting.text = when (h) {
+            in 5..11 -> "GOOD MORNING"
+            in 12..16 -> "GOOD AFTERNOON"
+            in 17..21 -> "GOOD EVENING"
+            else -> "LATE SHIFT"
+        }
+        greeting.setTextColor(accent)
+    }
+
+    /** The saved logo, or a generated initials badge. */
+    private fun avatarBitmap(name: String): Bitmap {
+        if (logoFile.exists()) {
+            BitmapFactory.decodeFile(logoFile.path)?.let { return it }
+        }
+        val s = dp(96)
+        val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = RadialGradient(s / 2f, s * 0.3f, s * 0.8f, Color.rgb(44, 44, 52), Color.rgb(10, 10, 13), Shader.TileMode.CLAMP)
+        c.drawCircle(s / 2f, s / 2f, s / 2f, p)
+        p.shader = null
+        val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
+        p.color = accent
+        p.textAlign = Paint.Align.CENTER
+        p.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        p.textSize = s * if (initials.length > 1) 0.42f else 0.5f
+        c.drawText(initials.ifEmpty { "α" }, s / 2f, s / 2f - (p.descent() + p.ascent()) / 2f, p)
+        return bmp
+    }
+
+    private fun showProfileDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(4))
+        }
+        val preview = ImageView(this).apply {
+            setImageBitmap(avatarBitmap(prefs.getString("profile_name", "").orEmpty()))
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
+            clipToOutline = true
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        profilePreview = preview
+        box.addView(preview, LinearLayout.LayoutParams(dp(88), dp(88)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+
+        val nameField = EditText(this).apply {
+            setText(prefs.getString("profile_name", ""))
+            hint = "Your name"
+            setSingleLine()
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.argb(128, 255, 255, 255))
+        }
+        box.addView(nameField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(this).apply {
+            text = label
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(if (primary) Color.BLACK else Color.WHITE)
+            setBackgroundResource(R.drawable.pill_accent)
+            backgroundTintList = ColorStateList.valueOf(if (primary) accent else Color.argb(38, 255, 255, 255))
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            setOnClickListener { onClick() }
+        }
+        row.addView(pill("Choose logo", true) { pickLogo() }, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(pill("Remove logo", false) {
+            logoFile.delete()
+            preview.setImageBitmap(avatarBitmap(nameField.text.toString()))
+            refreshProfile()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+        box.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Profile")
+            .setView(box)
+            .setPositiveButton("Save") { _, _ ->
+                prefs.edit().putString("profile_name", nameField.text.toString().trim()).apply()
+                refreshProfile()
+            }
+            .setNegativeButton("Cancel", null)
+            .setOnDismissListener { profilePreview = null }
+            .show()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun pickLogo() {
+        val i = if (Build.VERSION.SDK_INT >= 33) {
+            Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*")
+        } else {
+            Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        try {
+            startActivityForResult(i, REQ_LOGO)
+        } catch (e: Exception) {
+            toast("No image picker available")
+        }
+    }
+
+    /** Centre-crops the picked image to a square, scales it and saves it as the profile logo. */
+    private fun importLogo(uri: Uri) {
+        io.execute {
+            try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                if (bounds.outWidth <= 0) throw IOException("unreadable image")
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 512 && bounds.outHeight / (sample * 2) >= 512) sample *= 2
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                    ?: throw IOException("unreadable image")
+                val side = minOf(src.width, src.height)
+                val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+                val out = Bitmap.createScaledBitmap(square, 384, 384, true)
+                logoFile.outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                handler.post {
+                    refreshProfile()
+                    profilePreview?.setImageBitmap(avatarBitmap(""))
+                }
+            } catch (e: Exception) {
+                handler.post { toast("Couldn't load that image") }
+            }
+        }
     }
 
     private fun applySpin() {
@@ -579,6 +866,7 @@ class MainActivity : Activity() {
         galaxyHud.accent = accent
         galaxyView.accent = accent
         galaxySearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
+        refreshProfile()
         for (i in 0 until toolsRow.childCount) {
             (toolsRow.getChildAt(i) as? TextView)?.setTextColor(accent)
         }
@@ -665,6 +953,7 @@ class MainActivity : Activity() {
         val is24 = android.text.format.DateFormat.is24HourFormat(this)
         clock.text = SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(now)
         date.text = SimpleDateFormat("EEE · dd MMM yyyy", Locale.getDefault()).format(now).uppercase(Locale.getDefault())
+        if (tickCount % 60 == 0) updateGreeting()
     }
 
     private fun updateStats() {
