@@ -135,13 +135,13 @@ class SettingsActivity : Activity() {
         content.removeAllViews()
 
         header()
-        updatesSection()       // always first
-        aboutSection()
         profileSection()
         appearanceSection()
         motionSection()
         homeSection()
         systemSection()
+        updatesSection()       // last two: Updates, then About
+        aboutSection()
 
         scroll.post { scroll.scrollTo(0, y) }
     }
