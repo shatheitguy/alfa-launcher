@@ -983,7 +983,12 @@ class MainActivity : Activity() {
         sysInfo.text = buildString {
             append(Build.MODEL.uppercase(Locale.US)).append('\n')
             append("ANDROID ").append(Build.VERSION.RELEASE).append(" · API ").append(Build.VERSION.SDK_INT).append('\n')
-            append(String.format(Locale.US, "UP %dd %02dh %02dm", up / 86400, (up / 3600) % 24, (up / 60) % 60))
+            append(String.format(Locale.US, "UP %dd %02dh %02dm", up / 86400, (up / 3600) % 24, (up / 60) % 60)).append('\n')
+            val gb = 1_073_741_824.0
+            append(String.format(Locale.US, "RAM %d%% · %.1f/%.0f GB", (ramFrac * 100).toInt(),
+                (mem.totalMem - mem.availMem) / gb, Math.ceil(mem.totalMem / gb))).append('\n')
+            append(String.format(Locale.US, "STO %d%% · %.0f/%.0f GB", (stoFrac * 100).toInt(),
+                (fs.totalBytes - fs.availableBytes) / gb, fs.totalBytes / gb))
         }
 
         val net = netType()
