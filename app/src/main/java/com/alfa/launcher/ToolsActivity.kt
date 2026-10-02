@@ -65,6 +65,11 @@ class ToolsActivity : Activity() {
         const val TOOL_SHORTCUTS = "shortcuts"
         const val TOOL_UPDATE = "update"
         const val TOOL_QR = "qr"
+        const val TOOL_SPEED = "speed"
+        const val TOOL_WIFI = "wifi"
+        const val TOOL_SSL = "ssl"
+        const val TOOL_WOL = "wol"
+        private const val REQ_LOCATION = 71
         private const val REQ_SAVE_QR = 61
 
         private val SERVICES = mapOf(
@@ -83,6 +88,10 @@ class ToolsActivity : Activity() {
 
     private val tools = listOf(
         Tool(TOOL_NETWORK, "Network info", "IP, gateway, DNS, link"),
+        Tool(TOOL_SPEED, "Speed test", "Download, upload, ping, jitter"),
+        Tool(TOOL_WIFI, "Wi-Fi details", "Live signal, band, channel, speed"),
+        Tool(TOOL_SSL, "SSL checker", "Certificate, expiry, issuer, TLS"),
+        Tool(TOOL_WOL, "Wake-on-LAN", "Wake your saved PCs and servers"),
         Tool(TOOL_QR, "QR generator", "Wi-Fi, link or text → QR, save PNG"),
         Tool(TOOL_PING, "Ping", "ICMP echo to any host"),
         Tool(TOOL_DNS, "DNS lookup", "Resolve and reverse-resolve"),
@@ -334,6 +343,10 @@ class ToolsActivity : Activity() {
         when (id) {
             TOOL_NETWORK -> networkTool()
             TOOL_QR -> qrTool()
+            TOOL_SPEED -> speedTool()
+            TOOL_WIFI -> wifiTool()
+            TOOL_SSL -> sslTool()
+            TOOL_WOL -> wolTool()
             TOOL_PING -> pingTool()
             TOOL_DNS -> dnsTool()
             TOOL_PORTS -> portsTool()
@@ -579,6 +592,474 @@ class ToolsActivity : Activity() {
         } finally {
             c.disconnect()
         }
+    }
+
+    // ---------- Speed test (Cloudflare speed servers) ----------
+
+    private fun speedTool() {
+        val big = tv("—", 52f, white, font = "sans-serif-thin")
+        val unit = tv("Mbps", 14f, dim, mono = true)
+        val phaseTv = tv("READY", 11f, accent, mono = true).apply { letterSpacing = 0.2f }
+        val gauge = card().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(phaseTv)
+            addView(big, lp(6).apply { width = -2 })
+            addView(unit)
+        }
+        add(gauge, 14)
+        lateinit var out: TextView
+        lateinit var start: TextView
+        start = button("Start test") {
+            if (start.alpha < 1f) return@button
+            stopWork(); cancelled = false
+            start.alpha = 0.4f
+            out.text = ""
+            bg { runSpeedTest(big, phaseTv, out) { ui { start.alpha = 1f } } }
+        }
+        row(start, button("Stop", primary = false) { cancelled = true })
+        out = output("Measures latency, download and upload against Cloudflare's public speed servers " +
+            "(speed.cloudflare.com). Uses roughly 30–150 MB of data depending on your speed.")
+    }
+
+    private fun speedConn(url: String): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 6000
+            readTimeout = 8000
+            useCaches = false
+            setRequestProperty("User-Agent", "ALFA-Launcher")
+        }
+
+    private fun runSpeedTest(big: TextView, phaseTv: TextView, out: TextView, done: () -> Unit) {
+        val lines = StringBuilder()
+        fun log(s: String) { lines.append(s).append('\n'); val t = lines.toString(); ui { out.text = t.trimEnd() } }
+        fun show(phase: String, value: String) = ui { phaseTv.text = phase; big.text = value }
+        try {
+            // 1) latency: several tiny requests, median + jitter
+            show("PING", "…")
+            val pings = ArrayList<Long>()
+            var colo = ""
+            repeat(8) {
+                if (cancelled) return@repeat
+                val t0 = System.nanoTime()
+                val c = speedConn("https://speed.cloudflare.com/__down?bytes=0")
+                c.inputStream.use { it.readBytes() }
+                pings.add((System.nanoTime() - t0) / 1_000_000)
+                if (colo.isEmpty()) colo = c.getHeaderField("cf-ray")?.substringAfterLast('-') ?: ""
+                c.disconnect()
+            }
+            if (cancelled) throw InterruptedException()
+            pings.sort()
+            val ping = pings[pings.size / 2]
+            val jitter = pings.zipWithNext { a, b -> kotlin.math.abs(b - a) }.average()
+            show("PING", "$ping")
+            log("SERVER      Cloudflare ${if (colo.isNotEmpty()) colo else ""}")
+            log(String.format(Locale.US, "PING        %d ms   (jitter %.1f ms)", ping, jitter))
+
+            // 2) download: 4 parallel streams for up to 8 s
+            val down = transfer(upload = false, seconds = 8) { mbps -> show("DOWNLOAD", String.format(Locale.US, "%.1f", mbps)) }
+            if (cancelled) throw InterruptedException()
+            log(String.format(Locale.US, "DOWNLOAD    %.1f Mbps", down))
+
+            // 3) upload: 3 parallel streams for up to 8 s
+            val up = transfer(upload = true, seconds = 8) { mbps -> show("UPLOAD", String.format(Locale.US, "%.1f", mbps)) }
+            if (cancelled) throw InterruptedException()
+            log(String.format(Locale.US, "UPLOAD      %.1f Mbps", up))
+            show("DONE", String.format(Locale.US, "%.0f", down))
+            log("\n" + verdict(down, ping))
+        } catch (e: InterruptedException) {
+            show("STOPPED", "—"); log("stopped.")
+        } catch (e: Exception) {
+            show("ERROR", "—"); log("error: ${e.message}")
+        } finally {
+            done()
+        }
+    }
+
+    private fun verdict(down: Double, ping: Long) = when {
+        down >= 100 && ping < 40 -> "Excellent — 4K streaming, big downloads and video calls on many devices."
+        down >= 25 && ping < 80 -> "Good — HD streaming and video calls are fine."
+        down >= 8 -> "OK — browsing and SD video; video calls may struggle on several devices."
+        else -> "Slow — expect buffering. Try moving closer to the router or check the line."
+    }
+
+    /** Parallel time-boxed transfer; reports live Mbps, returns the overall Mbps. */
+    private fun transfer(upload: Boolean, seconds: Int, live: (Double) -> Unit): Double {
+        val total = AtomicInteger(0)                  // in KiB to stay well inside Int
+        val bytes = java.util.concurrent.atomic.AtomicLong(0)
+        val streams = if (upload) 3 else 4
+        val deadline = System.nanoTime() + seconds * 1_000_000_000L
+        val start = System.nanoTime()
+        val exec = Executors.newFixedThreadPool(streams)
+        repeat(streams) {
+            exec.execute {
+                val buf = ByteArray(64 * 1024)
+                while (!cancelled && System.nanoTime() < deadline) {
+                    try {
+                        if (upload) {
+                            java.util.Random().nextBytes(buf)
+                            val size = 8 * 1024 * 1024
+                            val c = speedConn("https://speed.cloudflare.com/__up")
+                            c.doOutput = true
+                            c.requestMethod = "POST"
+                            c.setFixedLengthStreamingMode(size)
+                            c.setRequestProperty("Content-Type", "application/octet-stream")
+                            c.outputStream.use { os ->
+                                var sent = 0
+                                while (sent < size && !cancelled && System.nanoTime() < deadline) {
+                                    val n = minOf(buf.size, size - sent)
+                                    os.write(buf, 0, n); sent += n; bytes.addAndGet(n.toLong())
+                                }
+                            }
+                            if (!cancelled && System.nanoTime() < deadline) c.responseCode
+                            c.disconnect()
+                        } else {
+                            val c = speedConn("https://speed.cloudflare.com/__down?bytes=25000000")
+                            c.inputStream.use { ins ->
+                                while (!cancelled && System.nanoTime() < deadline) {
+                                    val n = ins.read(buf)
+                                    if (n < 0) break
+                                    bytes.addAndGet(n.toLong())
+                                }
+                            }
+                            c.disconnect()
+                        }
+                    } catch (e: Exception) {
+                        // a stream cut off at the deadline is expected; anything else ends this stream
+                        if (System.nanoTime() < deadline && !cancelled) break
+                    }
+                }
+            }
+        }
+        exec.shutdown()
+        while (!exec.awaitTermination(250, TimeUnit.MILLISECONDS)) {
+            val secs = (System.nanoTime() - start) / 1e9
+            if (secs > 0.3) live(bytes.get() * 8 / secs / 1e6)
+        }
+        total.set(0)
+        val secs = ((minOf(System.nanoTime(), deadline) - start) / 1e9).coerceAtLeast(0.1)
+        return bytes.get() * 8 / secs / 1e6
+    }
+
+    // ---------- Wi-Fi details ----------
+
+    private fun wifiTool() {
+        val dbm = tv("—", 52f, white, font = "sans-serif-thin")
+        val quality = tv("", 12f, accent, mono = true).apply { letterSpacing = 0.2f }
+        val meter = tv("", 14f, accent, mono = true)
+        add(card().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(tv("SIGNAL", 11f, dim, mono = true).apply { letterSpacing = 0.2f })
+            addView(dbm, lp(4).apply { width = -2 })
+            addView(meter, lp(2).apply { width = -2 })
+            addView(quality, lp(6).apply { width = -2 })
+        }, 14)
+        lateinit var out: TextView
+        val perm = button("Show network name", primary = false) {
+            @Suppress("DEPRECATION")
+            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION), REQ_LOCATION)
+        }
+        row(perm, button("Wi-Fi settings", primary = false) { startSafe(Intent(Settings.ACTION_WIFI_SETTINGS)) })
+        out = output("reading…")
+        add(tv("Updates every second — walk around to find dead spots. Android only reveals the network name (SSID) " +
+            "to apps with location permission; everything else works without it.", 11f, dimmer), 12)
+
+        val loop = object : Runnable {
+            override fun run() {
+                if (isDestroyed || current != TOOL_WIFI) return
+                val w = wifiSnapshot()
+                out.text = w.report
+                perm.visibility = if (w.needsLocation) View.VISIBLE else View.GONE
+                if (w.rssi != null) {
+                    dbm.text = "${w.rssi} dBm"
+                    val f = ((w.rssi + 100) / 60f).coerceIn(0f, 1f)
+                    val n = (f * 20).toInt()
+                    meter.text = "█".repeat(n) + "░".repeat(20 - n)
+                    quality.text = when {
+                        w.rssi >= -55 -> "EXCELLENT"
+                        w.rssi >= -67 -> "GOOD"
+                        w.rssi >= -75 -> "FAIR"
+                        w.rssi >= -85 -> "WEAK"
+                        else -> "VERY WEAK"
+                    }
+                } else {
+                    dbm.text = "—"; meter.text = ""; quality.text = "NOT CONNECTED"
+                }
+                main.postDelayed(this, 1000)
+            }
+        }
+        main.post(loop)
+    }
+
+    private class WifiSnap(val report: String, val rssi: Int?, val needsLocation: Boolean)
+
+    @Suppress("DEPRECATION")
+    private fun wifiSnapshot(): WifiSnap {
+        val wm = applicationContext.getSystemService(android.net.wifi.WifiManager::class.java)
+            ?: return WifiSnap("Wi-Fi service unavailable.", null, false)
+        if (!wm.isWifiEnabled) return WifiSnap("Wi-Fi is turned off.", null, false)
+        val info = wm.connectionInfo ?: return WifiSnap("Not connected to Wi-Fi.", null, false)
+        if (info.networkId == -1 && info.ipAddress == 0) return WifiSnap("Not connected to Wi-Fi.", null, false)
+
+        val ssidRaw = info.ssid?.trim('"') ?: ""
+        val hiddenName = ssidRaw.isEmpty() || ssidRaw == "<unknown ssid>"
+        val bssid = info.bssid?.takeIf { it != "02:00:00:00:00:00" }
+        val freq = info.frequency
+        val band = when (freq) { in 2400..2500 -> "2.4 GHz"; in 4900..5900 -> "5 GHz"; in 5925..7125 -> "6 GHz"; else -> "$freq MHz" }
+        val channel = when (freq) {
+            2484 -> 14
+            in 2412..2472 -> (freq - 2407) / 5
+            in 5000..5900 -> (freq - 5000) / 5
+            in 5955..7115 -> (freq - 5950) / 5
+            else -> 0
+        }
+        val sb = StringBuilder()
+        fun r(k: String, v: Any?) { sb.append(k.padEnd(12)).append(v?.toString() ?: "—").append('\n') }
+        r("NETWORK", if (hiddenName) "hidden — tap “Show network name”" else ssidRaw)
+        r("ACCESS PT", bssid ?: "—")
+        r("SIGNAL", "${info.rssi} dBm")
+        r("BAND", band)
+        r("CHANNEL", if (channel > 0) channel else "—")
+        r("FREQUENCY", "$freq MHz")
+        r("LINK SPEED", "${info.linkSpeed} Mbps")
+        if (Build.VERSION.SDK_INT >= 29) {
+            r("TX / RX", "${info.txLinkSpeedMbps} / ${info.rxLinkSpeedMbps} Mbps")
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            r("STANDARD", when (info.wifiStandard) {
+                1 -> "802.11a/b/g (legacy)"
+                4 -> "Wi-Fi 4 (802.11n)"
+                5 -> "Wi-Fi 5 (802.11ac)"
+                6 -> "Wi-Fi 6 / 6E (802.11ax)"
+                7 -> "802.11ad"
+                8 -> "Wi-Fi 7 (802.11be)"
+                else -> "unknown"
+            })
+            r("MAX SPEED", "${info.maxSupportedTxLinkSpeedMbps} / ${info.maxSupportedRxLinkSpeedMbps} Mbps")
+        }
+        val ip = info.ipAddress
+        if (ip != 0) r("IP", "${ip and 255}.${(ip shr 8) and 255}.${(ip shr 16) and 255}.${(ip shr 24) and 255}")
+        r("GATEWAY", gateway())
+        return WifiSnap(sb.toString().trimEnd(), info.rssi, hiddenName)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LOCATION && grantResults.none { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+            toast("Without location permission Android hides the network name")
+        }
+    }
+
+    // ---------- SSL / certificate checker ----------
+
+    private fun sslTool() {
+        val host = add(field("domain, e.g. google.com", "google.com"), 14)
+        val port = field("port", "443", number = true)
+        lateinit var out: TextView
+        row(port, button("Check") {
+            val h = host.text.toString().trim().removePrefix("https://").removePrefix("http://")
+                .substringBefore('/').substringBefore('?')
+            val hostOnly = h.substringBefore(':')
+            val p = (if (h.contains(':')) h.substringAfter(':') else port.text.toString()).toIntOrNull()?.coerceIn(1, 65535) ?: 443
+            if (!validHost(hostOnly)) { out.text = "invalid host"; return@button }
+            out.text = "connecting to $hostOnly:$p …"
+            bg {
+                val report = try { sslReport(hostOnly, p) } catch (e: Exception) { "error: ${e.message}" }
+                ui { out.text = report }
+            }
+        }, button("Copy", primary = false) { copy(out.text.toString()) })
+        out = output()
+    }
+
+    private fun sslHandshake(host: String, port: Int, trustAll: Boolean): javax.net.ssl.SSLSession {
+        val factory = if (trustAll) {
+            // only used to *display* a certificate that already failed normal validation
+            val tm = object : javax.net.ssl.X509TrustManager {
+                override fun checkClientTrusted(c: Array<out java.security.cert.X509Certificate>?, a: String?) {}
+                override fun checkServerTrusted(c: Array<out java.security.cert.X509Certificate>?, a: String?) {}
+                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+            }
+            javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), SecureRandom()) }.socketFactory
+        } else {
+            javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
+        }
+        val raw = Socket()
+        raw.connect(InetSocketAddress(host, port), 7000)
+        raw.soTimeout = 7000
+        val s = factory.createSocket(raw, host, port, true) as javax.net.ssl.SSLSocket
+        try {
+            s.startHandshake()
+            return s.session
+        } finally {
+            try { s.close() } catch (e: Exception) {}
+        }
+    }
+
+    private fun sslReport(host: String, port: Int): String {
+        var trustError: String? = null
+        val session = try {
+            sslHandshake(host, port, trustAll = false)
+        } catch (e: javax.net.ssl.SSLException) {
+            trustError = e.message ?: e.javaClass.simpleName
+            sslHandshake(host, port, trustAll = true)
+        }
+        val certs = session.peerCertificates.filterIsInstance<java.security.cert.X509Certificate>()
+        val leaf = certs.firstOrNull() ?: return "No certificate returned."
+        val nameOk = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(host, session)
+        val now = System.currentTimeMillis()
+        val daysLeft = (leaf.notAfter.time - now) / 86_400_000L
+        val fmt = java.text.SimpleDateFormat("dd MMM yyyy", Locale.US)
+        fun cn(dn: String) = Regex("CN=([^,]+)").find(dn)?.groupValues?.get(1) ?: dn
+        fun org(dn: String) = Regex("O=([^,]+)").find(dn)?.groupValues?.get(1)
+        val sans = try {
+            leaf.subjectAlternativeNames?.filter { it.size >= 2 && it[0] == 2 }?.map { it[1].toString() } ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+        val key = leaf.publicKey
+        val keyDesc = when (key) {
+            is java.security.interfaces.RSAPublicKey -> "RSA ${key.modulus.bitLength()}"
+            is java.security.interfaces.ECPublicKey -> "EC ${key.params.curve.field.fieldSize}"
+            else -> key.algorithm
+        }
+        val status = when {
+            trustError != null -> "✗ NOT TRUSTED — $trustError"
+            !nameOk -> "✗ NAME MISMATCH — certificate is not for $host"
+            daysLeft < 0 -> "✗ EXPIRED"
+            daysLeft < 30 -> "⚠ VALID, expires soon"
+            else -> "✓ VALID & TRUSTED"
+        }
+        val sb = StringBuilder()
+        fun r(k: String, v: Any?) { sb.append(k.padEnd(12)).append(v?.toString() ?: "—").append('\n') }
+        r("HOST", "$host:$port")
+        r("STATUS", status)
+        r("EXPIRES", "${fmt.format(leaf.notAfter)}  (${if (daysLeft >= 0) "$daysLeft days left" else "${-daysLeft} days ago"})")
+        r("VALID FROM", fmt.format(leaf.notBefore))
+        r("SUBJECT", cn(leaf.subjectX500Principal.name))
+        r("ISSUER", listOfNotNull(org(leaf.issuerX500Principal.name), cn(leaf.issuerX500Principal.name)).distinct().joinToString(" · "))
+        r("PROTOCOL", session.protocol)
+        r("CIPHER", session.cipherSuite)
+        r("KEY", keyDesc)
+        r("SIGNATURE", leaf.sigAlgName)
+        r("SERIAL", leaf.serialNumber.toString(16).uppercase(Locale.US))
+        if (sans.isNotEmpty()) {
+            sb.append("\nCOVERS (${sans.size})\n")
+            sans.take(25).forEach { sb.append("  ").append(it).append('\n') }
+            if (sans.size > 25) sb.append("  … +${sans.size - 25} more\n")
+        }
+        sb.append("\nCHAIN (${certs.size})\n")
+        certs.forEachIndexed { i, c -> sb.append("  ${i + 1}. ").append(cn(c.subjectX500Principal.name)).append('\n') }
+        return sb.toString().trimEnd()
+    }
+
+    // ---------- Wake-on-LAN ----------
+
+    private data class WolDevice(val name: String, val mac: String, val host: String, val port: Int)
+
+    private fun wolLoad(): MutableList<WolDevice> {
+        val raw = getSharedPreferences("alfa", MODE_PRIVATE).getString("wol_devices", "[]") ?: "[]"
+        return try {
+            val a = org.json.JSONArray(raw)
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                WolDevice(o.getString("name"), o.getString("mac"), o.optString("host", "255.255.255.255"), o.optInt("port", 9))
+            }.toMutableList()
+        } catch (e: Exception) { mutableListOf() }
+    }
+
+    private fun wolSave(list: List<WolDevice>) {
+        val a = org.json.JSONArray()
+        list.forEach { d -> a.put(org.json.JSONObject().put("name", d.name).put("mac", d.mac).put("host", d.host).put("port", d.port)) }
+        getSharedPreferences("alfa", MODE_PRIVATE).edit().putString("wol_devices", a.toString()).apply()
+    }
+
+    /** Broadcast address of the current IPv4 network (falls back to 255.255.255.255). */
+    private fun localBroadcast(): String {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return "255.255.255.255"
+        val la = cm.getLinkProperties(cm.activeNetwork)?.linkAddresses?.firstOrNull { it.address is Inet4Address }
+            ?: return "255.255.255.255"
+        val ip = parseIp(la.address.hostAddress ?: return "255.255.255.255") ?: return "255.255.255.255"
+        val cidr = la.prefixLength
+        val all = 0xFFFFFFFFL
+        val mask = if (cidr == 0) 0L else (all shl (32 - cidr)) and all
+        return ipStr((ip and mask) or (mask.inv() and all))
+    }
+
+    private fun normalizeMac(s: String): String? {
+        val hex = s.trim().replace(Regex("[^0-9A-Fa-f]"), "")
+        if (hex.length != 12) return null
+        return hex.uppercase(Locale.US).chunked(2).joinToString(":")
+    }
+
+    private fun sendMagicPacket(d: WolDevice) {
+        val macBytes = d.mac.split(":").map { it.toInt(16).toByte() }.toByteArray()
+        val packet = ByteArray(6 + 16 * 6)
+        for (i in 0 until 6) packet[i] = 0xFF.toByte()
+        for (i in 0 until 16) System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6)
+        val addr = InetAddress.getByName(d.host)
+        java.net.DatagramSocket().use { s ->
+            s.broadcast = true
+            repeat(3) { s.send(java.net.DatagramPacket(packet, packet.size, addr, d.port)) }
+        }
+    }
+
+    private fun wolTool() {
+        val listCard = card()
+        add(listCard, 14)
+
+        fun renderList() {
+            listCard.removeAllViews()
+            val devices = wolLoad()
+            if (devices.isEmpty()) {
+                listCard.addView(tv("No devices yet — add one below.", 13f, dim))
+                return
+            }
+            devices.forEachIndexed { i, d ->
+                if (i > 0) listCard.addView(View(this).apply { setBackgroundColor(Color.argb(20, 255, 255, 255)) },
+                    LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(10); bottomMargin = dp(10) })
+                val r = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                col.addView(tv(d.name, 15f, white, font = "sans-serif-medium"))
+                col.addView(tv("${d.mac}  ·  ${d.host}:${d.port}", 11f, dim, mono = true), lp(2))
+                r.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+                r.addView(button("Wake") {
+                    bg {
+                        val msg = try { sendMagicPacket(d); "Magic packet sent to ${d.name}" } catch (e: Exception) { "Send failed: ${e.message}" }
+                        ui { toast(msg) }
+                    }
+                }.apply { setPadding(dp(16), dp(9), dp(16), dp(9)) })
+                r.addView(tv("✕", 16f, dim).apply {
+                    setPadding(dp(14), dp(8), dp(4), dp(8))
+                    setOnClickListener {
+                        android.app.AlertDialog.Builder(this@ToolsActivity, android.R.style.Theme_Material_Dialog_Alert)
+                            .setMessage("Remove ${d.name}?")
+                            .setPositiveButton("Remove") { _, _ -> wolSave(wolLoad().also { l -> l.removeAll { it == d } }); renderList() }
+                            .setNegativeButton("Cancel", null).show()
+                    }
+                })
+                listCard.addView(r)
+            }
+        }
+        renderList()
+
+        add(tv("ADD DEVICE", 11f, accent, mono = true).apply { letterSpacing = 0.2f }, 22)
+        val name = add(field("Name, e.g. Office PC"), 8)
+        val mac = add(field("MAC address, e.g. 3C:7C:3F:12:AB:9E"), 8)
+        val host = field("Broadcast address", localBroadcast())
+        val port = field("Port", "9", number = true)
+        row(host, port, top = 8)
+        row(button("Save device") {
+            val m = normalizeMac(mac.text.toString())
+            if (m == null) { toast("Enter a valid MAC address (12 hex digits)"); return@button }
+            val h = host.text.toString().trim().ifEmpty { "255.255.255.255" }
+            if (!validHost(h)) { toast("Invalid broadcast address"); return@button }
+            val n = name.text.toString().trim().ifEmpty { m }
+            val p = port.text.toString().toIntOrNull()?.coerceIn(1, 65535) ?: 9
+            wolSave(wolLoad().apply { add(WolDevice(n, m, h, p)) })
+            name.setText(""); mac.setText("")
+            renderList()
+            toast("Saved $n")
+        })
+        add(tv("The target must have Wake-on-LAN enabled in its BIOS/UEFI and network adapter settings, " +
+            "and be on the same network as your phone (or reachable through a directed broadcast).", 11f, dimmer), 14)
     }
 
     // ---------- QR generator ----------
