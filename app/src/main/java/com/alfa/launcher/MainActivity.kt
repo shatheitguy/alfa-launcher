@@ -310,6 +310,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // never stay hidden: reveal even if window focus doesn't come back (e.g. a dialog)
+        if (hiddenForReturn) {
+            handler.removeCallbacks(revealFallback)
+            handler.postDelayed(revealFallback, 700)
+        }
         tickCount = 0
         handler.removeCallbacks(tick)
         handler.post(tick)
@@ -346,6 +351,36 @@ class MainActivity : Activity() {
     override fun onPause() {
         handler.removeCallbacks(tick)
         super.onPause()
+    }
+
+    // ---- clean return from Recents / other apps ----
+    // On Android 10+ Recents is drawn by the phone's own launcher and fades out ON TOP of
+    // ALFA. With a transparent (wallpaper) background the two layouts mix for a moment.
+    // So: hide ALFA's layout while it's in the background, and fade it in once ALFA has
+    // window focus again, i.e. after the system Recents screen has gone.
+    private var hiddenForReturn = false
+    private val revealFallback = Runnable { revealHome() }
+
+    override fun onStop() {
+        super.onStop()
+        hiddenForReturn = true
+        homeContent.animate().cancel()
+        homeContent.alpha = 0f
+        homeContent.scaleX = 0.96f
+        homeContent.scaleY = 0.96f
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) revealHome()
+    }
+
+    private fun revealHome() {
+        handler.removeCallbacks(revealFallback)
+        if (!hiddenForReturn) return
+        hiddenForReturn = false
+        homeContent.animate().alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(240).setInterpolator(DecelerateInterpolator(2f)).start()
     }
 
     override fun onDestroy() {
