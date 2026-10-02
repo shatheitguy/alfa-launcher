@@ -220,24 +220,7 @@ class OrbitView(context: Context, attrs: AttributeSet?) : FrameLayout(context, a
         }
         canvas.restore()
 
-        // RAM (left) and STORAGE (right) gauges on the outer ring
-        stroke.strokeCap = Paint.Cap.ROUND
-        stroke.strokeWidth = 3f * d
-        rect.set(cx - outerR, cy - outerR, cx + outerR, cy + outerR)
-        stroke.color = Color.argb(40, 255, 255, 255)
-        canvas.drawArc(rect, 145f, 70f, false, stroke)
-        canvas.drawArc(rect, -35f, 70f, false, stroke)
-        stroke.color = accent
-        canvas.drawArc(rect, 215f, -70f * ram, false, stroke)
-        canvas.drawArc(rect, 35f, -70f * storage, false, stroke)
-        stroke.strokeCap = Paint.Cap.BUTT
-
-        text.color = Color.argb(170, 255, 255, 255)
-        val ty = cy + text.textSize / 3f
-        canvas.drawText("RAM", cx - outerR + 26 * d, ty - 6 * d, text)
-        canvas.drawText("${(ram * 100).toInt()}%", cx - outerR + 26 * d, ty + 6 * d, text)
-        canvas.drawText("STO", cx + outerR - 26 * d, ty - 6 * d, text)
-        canvas.drawText("${(storage * 100).toInt()}%", cx + outerR - 26 * d, ty + 6 * d, text)
+        // (RAM and storage now live in the info block next to the clock)
 
         // dashed inner ring, counter-rotating
         canvas.save()
