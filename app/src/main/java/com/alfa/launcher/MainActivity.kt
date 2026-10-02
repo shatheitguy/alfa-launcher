@@ -363,11 +363,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        hiddenForReturn = true
-        homeContent.animate().cancel()
-        homeContent.alpha = 0f
-        homeContent.scaleX = 0.96f
-        homeContent.scaleY = 0.96f
+        // (hiding the layout here made app-close animations blink; kept visible on purpose)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
