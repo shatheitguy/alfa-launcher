@@ -64,6 +64,8 @@ class ToolsActivity : Activity() {
         const val TOOL_PASSWORD = "password"
         const val TOOL_SHORTCUTS = "shortcuts"
         const val TOOL_UPDATE = "update"
+        const val TOOL_QR = "qr"
+        private const val REQ_SAVE_QR = 61
 
         private val SERVICES = mapOf(
             20 to "ftp-data", 21 to "ftp", 22 to "ssh", 23 to "telnet", 25 to "smtp", 53 to "dns",
@@ -81,6 +83,7 @@ class ToolsActivity : Activity() {
 
     private val tools = listOf(
         Tool(TOOL_NETWORK, "Network info", "IP, gateway, DNS, link"),
+        Tool(TOOL_QR, "QR generator", "Wi-Fi, link or text → QR, save PNG"),
         Tool(TOOL_PING, "Ping", "ICMP echo to any host"),
         Tool(TOOL_DNS, "DNS lookup", "Resolve and reverse-resolve"),
         Tool(TOOL_PORTS, "Port check", "TCP ports on one host"),
@@ -330,6 +333,7 @@ class ToolsActivity : Activity() {
         header(t.name, t.desc.uppercase(Locale.US), back = true)
         when (id) {
             TOOL_NETWORK -> networkTool()
+            TOOL_QR -> qrTool()
             TOOL_PING -> pingTool()
             TOOL_DNS -> dnsTool()
             TOOL_PORTS -> portsTool()
@@ -524,14 +528,6 @@ class ToolsActivity : Activity() {
             },
             button("Copy", primary = false) { copy(out.text.toString()) },
         )
-        row(button("Open router page", primary = false) {
-            // the router's own admin page lists every connected device and its IP
-            val gw = gateway()
-            if (gw == null) toast("No gateway on this network")
-            else startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://$gw")))
-        }, top = 8)
-        add(tv("Your router's admin page (usually under “Connected devices” or “DHCP clients”) lists every device on your network with its IP.",
-            11f, dimmer), 8)
         out = output(networkReport())
     }
 
@@ -583,6 +579,201 @@ class ToolsActivity : Activity() {
         } finally {
             c.disconnect()
         }
+    }
+
+    // ---------- QR generator ----------
+
+    private var qrBitmap: android.graphics.Bitmap? = null
+    private var qrName = "alfa-qr"
+
+    private fun qrTool() {
+        var type = "wifi"
+        val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val preview = android.widget.ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        }
+        val previewCard = card().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+            addView(preview, LinearLayout.LayoutParams(dp(240), dp(240)))
+        }
+        val caption = tv("", 11f, dim, mono = true).apply { gravity = Gravity.CENTER }
+
+        // fields
+        val ssid = field("Wi-Fi name (SSID)")
+        val pass = field("Password")
+        var security = "WPA"
+        var hidden = false
+        val url = field("https://example.com")
+        val text = field("Any text", multi = true)
+
+        fun seg(options: List<Pair<String, String>>, selected: () -> String, pick: (String) -> Unit): LinearLayout {
+            val r = LinearLayout(this)
+            fun paint() {
+                for (i in 0 until r.childCount) {
+                    val v = r.getChildAt(i) as TextView
+                    val on = v.tag == selected()
+                    v.backgroundTintList = ColorStateList.valueOf(if (on) accent else Color.argb(38, 255, 255, 255))
+                    v.setTextColor(if (on) Color.BLACK else white)
+                }
+            }
+            options.forEachIndexed { i, (label, value) ->
+                r.addView(button(label, primary = false) { pick(value); paint() }.apply { tag = value },
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) marginStart = dp(8) })
+            }
+            paint()
+            return r
+        }
+
+        fun buildForm() {
+            form.removeAllViews()
+            fun addF(v: View, top: Int = 10) = form.addView(v, lp(top))
+            when (type) {
+                "wifi" -> {
+                    addF(ssid, 0); addF(pass)
+                    addF(seg(listOf("WPA/WPA2/WPA3" to "WPA", "WEP" to "WEP", "Open" to "nopass"), { security }) {
+                        security = it
+                        pass.visibility = if (it == "nopass") View.GONE else View.VISIBLE
+                    })
+                    addF(seg(listOf("Visible network" to "no", "Hidden network" to "yes"), { if (hidden) "yes" else "no" }) {
+                        hidden = it == "yes"
+                    }, 8)
+                }
+                "link" -> addF(url, 0)
+                else -> addF(text, 0)
+            }
+        }
+
+        add(seg(listOf("Wi-Fi" to "wifi", "Link" to "link", "Text" to "text"), { type }) {
+            type = it; buildForm()
+            previewCard.visibility = View.GONE; caption.text = ""; qrBitmap = null
+        }, 14)
+        add(form, 12)
+        buildForm()
+
+        fun esc(s: String) = s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace(":", "\\:").replace("\"", "\\\"")
+
+        row(button("Generate QR") {
+            val payload: String
+            when (type) {
+                "wifi" -> {
+                    val s = ssid.text.toString()
+                    if (s.isBlank()) { toast("Enter the Wi-Fi name"); return@button }
+                    val p = pass.text.toString()
+                    if (security != "nopass" && p.isEmpty()) { toast("Enter the password (or choose Open)"); return@button }
+                    payload = "WIFI:T:$security;S:${esc(s)};" + (if (security != "nopass") "P:${esc(p)};" else "") +
+                        (if (hidden) "H:true;" else "") + ";"
+                    qrName = "wifi-" + s.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                    caption.text = "Scan to join \u201C$s\u201D"
+                }
+                "link" -> {
+                    var u = url.text.toString().trim()
+                    if (u.isEmpty()) { toast("Enter a link"); return@button }
+                    if (!u.contains("://")) u = "https://$u"
+                    payload = u
+                    qrName = "link-qr"
+                    caption.text = u
+                }
+                else -> {
+                    val t = text.text.toString()
+                    if (t.isBlank()) { toast("Enter some text"); return@button }
+                    payload = t
+                    qrName = "text-qr"
+                    caption.text = if (t.length > 60) t.take(60) + "\u2026" else t
+                }
+            }
+            val bmp = try { renderQr(payload, 1024) } catch (e: Exception) { toast("Too much data for one QR code"); return@button }
+            qrBitmap = bmp
+            preview.setImageBitmap(bmp)
+            previewCard.visibility = View.VISIBLE
+        })
+
+        add(previewCard, 16)
+        add(caption, 8)
+        row(
+            button("Save PNG", primary = false) { qrBitmap?.let { saveQr(it) } ?: toast("Generate a QR first") },
+            button("Share", primary = false) { qrBitmap?.let { shareQr(it) } ?: toast("Generate a QR first") },
+            top = 12,
+        )
+        add(tv("Wi-Fi codes use the standard format, so the phone camera on Android and iPhone offers to join the network.",
+            11f, dimmer), 14)
+    }
+
+    /** Encodes [content] into a crisp black-on-white QR bitmap with a quiet zone. */
+    private fun renderQr(content: String, size: Int): android.graphics.Bitmap {
+        val hints = mapOf(
+            com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
+            com.google.zxing.EncodeHintType.ERROR_CORRECTION to com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M,
+            com.google.zxing.EncodeHintType.MARGIN to 2,
+        )
+        val m = com.google.zxing.qrcode.QRCodeWriter().encode(content, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints)
+        val w = m.width
+        val h = m.height
+        val px = IntArray(w * h)
+        for (y in 0 until h) {
+            val o = y * w
+            for (x in 0 until w) px[o + x] = if (m.get(x, y)) Color.rgb(10, 10, 14) else Color.WHITE
+        }
+        return android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    }
+
+    private fun pngBytes(bmp: android.graphics.Bitmap): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+        return bos.toByteArray()
+    }
+
+    /** Android 10+: straight into Pictures/ALFA. Older: let the user pick where to save. */
+    @Suppress("DEPRECATION")
+    private fun saveQr(bmp: android.graphics.Bitmap): android.net.Uri? {
+        val name = "$qrName-${System.currentTimeMillis() / 1000}.png"
+        if (Build.VERSION.SDK_INT >= 29) {
+            return try {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ALFA")
+                }
+                val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: throw java.io.IOException("no media store")
+                contentResolver.openOutputStream(uri)?.use { it.write(pngBytes(bmp)) }
+                toast("Saved to Pictures/ALFA")
+                uri
+            } catch (e: Exception) {
+                toast("Couldn't save: ${e.message}")
+                null
+            }
+        }
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/png").putExtra(Intent.EXTRA_TITLE, name)
+        try { startActivityForResult(i, REQ_SAVE_QR) } catch (e: Exception) { toast("No file picker available") }
+        return null
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SAVE_QR && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            val bmp = qrBitmap ?: return
+            try {
+                contentResolver.openOutputStream(uri)?.use { it.write(pngBytes(bmp)) }
+                toast("QR saved")
+            } catch (e: Exception) {
+                toast("Couldn't save: ${e.message}")
+            }
+        }
+    }
+
+    private fun shareQr(bmp: android.graphics.Bitmap) {
+        if (Build.VERSION.SDK_INT < 29) { toast("Save the PNG first, then share it from Gallery"); saveQr(bmp); return }
+        val uri = saveQr(bmp) ?: return
+        val send = Intent(Intent.ACTION_SEND).setType("image/png")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startSafe(Intent.createChooser(send, "Share QR code"))
     }
 
     // ---------- ping ----------
