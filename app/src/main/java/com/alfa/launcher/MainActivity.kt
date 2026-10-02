@@ -317,11 +317,16 @@ class MainActivity : Activity() {
         }
         tickCount = 0
         handler.removeCallbacks(tick)
-        handler.post(tick)
-        applySettings()
-        banner.visibility =
-            if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
-        showUpdateChip()
+        // Let the first frame draw right away so the system's Recents -> Home transition isn't
+        // kept waiting; refresh settings, banner and update chip just after that frame.
+        window.decorView.post {
+            if (isDestroyed) return@post
+            applySettings()
+            banner.visibility =
+                if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
+            showUpdateChip()
+            handler.post(tick)
+        }
         if (Updater.shouldAutoCheck(this)) {
             // stamp first so an offline phone doesn't retry on every Home press
             prefs.edit().putLong("update_checked_at", System.currentTimeMillis()).apply()
@@ -749,11 +754,19 @@ class MainActivity : Activity() {
 
     // ---------------- profile ----------------
 
+    private var avatarKey = ""
+
     private fun refreshProfile() {
         val name = Profile.name(this)
         profileName.text = if (name.isEmpty()) "Tap to set profile" else name
         profileName.alpha = if (name.isEmpty()) 0.6f else 1f
-        avatar.setImageBitmap(Profile.avatar(this, accent, dp(96)))
+        // only re-decode the logo when something actually changed
+        val logo = Profile.logoFile(this)
+        val key = "$name|$accent|${if (logo.exists()) logo.lastModified() else 0}"
+        if (key != avatarKey) {
+            avatarKey = key
+            avatar.setImageBitmap(Profile.avatar(this, accent, dp(96)))
+        }
         avatarFrame.backgroundTintList = null
         (avatarFrame.background?.mutate() as? android.graphics.drawable.GradientDrawable)
             ?.setStroke(dp(2), accent)
