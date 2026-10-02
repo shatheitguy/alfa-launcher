@@ -135,7 +135,8 @@ class SettingsActivity : Activity() {
         content.removeAllViews()
 
         header()
-        alfaSection()          // version, updates, website: always first
+        updatesSection()       // always first
+        aboutSection()
         profileSection()
         appearanceSection()
         motionSection()
@@ -501,19 +502,21 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** ALFA OS: version, updates and links, at the top of Settings. */
-    private fun alfaSection() {
-        val card = section("ALFA OS", "α")
+    /** Updates: first section in Settings. */
+    private fun updatesSection() {
+        val card = section("UPDATES", "↻")
         val known = Updater.knownUpdate(this)
-        actionRow(card, "ALFA OS v${Updater.currentName(this)}",
-            if (known != null) "▲ Update $known available" else "Build ${Updater.currentCode(this)} · up to date as of the last check",
+        actionRow(card, "Check for updates",
+            if (known != null) "▲ $known available" else "Installed v${Updater.currentName(this)}",
             if (known != null) "Update" else null) { openUpdates() }
         line(card)
-        actionRow(card, "Check for updates", "Download and install the latest version from GitHub", null) { openUpdates() }
-        line(card)
         toggleRow(card, "Auto-check", "Look for new versions every 12 hours", "auto_update", true)
-        line(card)
-        actionRow(card, "Website", "shatheitguy.github.io/alfa-launcher", null) {
+    }
+
+    /** About: ALFA OS (opens the ALFA Launcher website) and the source code. */
+    private fun aboutSection() {
+        val card = section("ABOUT", "ℹ")
+        actionRow(card, "ALFA OS", "Version ${Updater.currentName(this)}  ·  build ${Updater.currentCode(this)}  ·  open website", null) {
             startSafe(Intent(Intent.ACTION_VIEW, Uri.parse("https://shatheitguy.github.io/alfa-launcher/")))
         }
         line(card)
