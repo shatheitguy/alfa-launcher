@@ -833,15 +833,20 @@ class MainActivity : Activity() {
      */
     private fun applyBackground() {
         val ownWallpaper = prefs.getBoolean("wallpaper", false)
+        val st = WallpaperSync.style(this)
+        if (hud.style != st) hud.style = st            // only rebuild when the style really changed
+        if (galaxyHud.style != st) galaxyHud.style = st
         hud.visibility = if (ownWallpaper || WallpaperSync.isApplied(this, accent)) View.GONE else View.VISIBLE
     }
 
     private fun applyAccent() {
         hud.accent = accent
+        hud.style = WallpaperSync.style(this)
         orbit.accent = accent
         netDot.backgroundTintList = ColorStateList.valueOf(accent)
         findViewById<View>(R.id.bannerSet).backgroundTintList = ColorStateList.valueOf(accent)
         galaxyHud.accent = accent
+        galaxyHud.style = WallpaperSync.style(this)
         galaxyView.accent = accent
         galaxySearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
         refreshProfile()
