@@ -2,382 +2,422 @@ package com.alfa.launcher
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
+import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.PI
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * ALFA's procedural backgrounds, tinted with the accent colour.
- * Used live behind ALFA screens and rendered off-screen as the system wallpaper.
+ * ALFA wallpapers, tinted with the accent colour: fluid glass, 3D depth, matte minimal,
+ * or the user's own photos. Shown behind ALFA screens and rendered as the system wallpaper.
+ * Everything is drawn once into a bitmap (software canvas, so blur filters work).
  */
 class HudBackground(context: Context, attrs: AttributeSet?) : View(context, attrs) {
 
     companion object {
-        const val CARBON = "carbon"
+        const val DEFAULT = "liquid"
+        const val PHOTO_PREFIX = "photo:"
         val STYLES = listOf(
-            CARBON to "Carbon",
-            "circuit" to "Circuit",
-            "hex" to "Hex",
-            "topo" to "Topo",
-            "nebula" to "Nebula",
-            "blueprint" to "Blueprint",
-            "waves" to "Waves",
-            "orbit" to "Orbit",
+            "liquid" to "Liquid",
+            "aurora" to "Aurora",
+            "prism" to "Prism",
+            "layers" to "Layers",
+            "dots" to "Dots",
+            "beam" to "Beam",
+            "eclipse" to "Eclipse",
         )
+        fun isKnown(id: String) = id.startsWith(PHOTO_PREFIX) || STYLES.any { it.first == id }
     }
 
     var accent: Int = Color.rgb(255, 45, 61)
         set(v) { field = v; rebuild(); invalidate() }
 
-    var style: String = CARBON
+    var style: String = DEFAULT
         set(v) { field = v; rebuild(); invalidate() }
 
     /** Pixels per dp. Thumbnails use a smaller value so they look like a shrunken wallpaper. */
     var unit: Float = resources.displayMetrics.density
         set(v) { field = v; rebuild(); invalidate() }
 
-    private val base = Paint()
-    private val tex = Paint()
-    private val glowTop = Paint()
-    private val glowBottom = Paint()
-    private val frame = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    // cached pattern for the heavy styles (redrawn only when size / accent / style change)
-    private var pattern: Bitmap? = null
+    private var image: Bitmap? = null
 
     private fun a(c: Int, alpha: Int) = Color.argb(alpha.coerceIn(0, 255), Color.red(c), Color.green(c), Color.blue(c))
 
-    /** Accent rotated around the hue wheel, for two-tone styles. */
-    private fun shifted(deg: Float): Int {
+    private fun hueShift(c: Int, deg: Float, sat: Float = 1f, value: Float = 1f): Int {
         val hsv = FloatArray(3)
-        Color.colorToHSV(accent, hsv)
+        Color.colorToHSV(c, hsv)
         hsv[0] = (hsv[0] + deg + 360f) % 360f
+        hsv[1] = (hsv[1] * sat).coerceIn(0f, 1f)
+        hsv[2] = (hsv[2] * value).coerceIn(0f, 1f)
         return Color.HSVToColor(hsv)
     }
 
+    private fun mix(c1: Int, c2: Int, t: Float): Int {
+        val u = t.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(c1) + (Color.red(c2) - Color.red(c1)) * u).toInt(),
+            (Color.green(c1) + (Color.green(c2) - Color.green(c1)) * u).toInt(),
+            (Color.blue(c1) + (Color.blue(c2) - Color.blue(c1)) * u).toInt(),
+        )
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = rebuild()
+
+    override fun onDraw(canvas: Canvas) {
+        val img = image
+        if (img != null) canvas.drawBitmap(img, 0f, 0f, null) else canvas.drawColor(Color.rgb(7, 7, 10))
+    }
 
     private fun rebuild() {
         val w = width
         val h = height
         if (w == 0 || h == 0) return
+        image?.recycle()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
         val wf = w.toFloat()
         val hf = h.toFloat()
-        base.shader = LinearGradient(0f, 0f, 0f, hf, Color.rgb(16, 16, 20), Color.rgb(4, 4, 6), Shader.TileMode.CLAMP)
-        glowTop.shader = RadialGradient(wf * 0.85f, hf * 0.12f, wf * 0.8f, a(accent, 70), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        glowBottom.shader = RadialGradient(wf * 0.1f, hf * 0.9f, wf * 0.9f, a(accent, 70), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        frame.color = a(accent, 90)
-        frame.strokeWidth = 1f * unit
-        tex.shader = if (style == CARBON) BitmapShader(carbonTile(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) else null
-        pattern?.recycle()
-        pattern = null
-        if (style != CARBON) {
-            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            drawPattern(Canvas(bmp), wf, hf)
-            pattern = bmp
+        try {
+            when {
+                style.startsWith(PHOTO_PREFIX) -> photo(c, wf, hf, style.removePrefix(PHOTO_PREFIX))
+                style == "aurora" -> aurora(c, wf, hf)
+                style == "prism" -> prism(c, wf, hf)
+                style == "layers" -> layers(c, wf, hf)
+                style == "dots" -> dots(c, wf, hf)
+                style == "beam" -> beam(c, wf, hf)
+                style == "eclipse" -> eclipse(c, wf, hf)
+                else -> liquid(c, wf, hf)
+            }
+        } catch (e: Exception) {
+            c.drawColor(Color.rgb(7, 7, 10))
         }
+        if (!style.startsWith(PHOTO_PREFIX)) grain(c, wf, hf)
+        image = bmp
     }
 
-    private fun carbonTile(): Bitmap {
-        val s = (4 * unit).toInt().coerceAtLeast(2)
-        val bmp = Bitmap.createBitmap(s * 2, s * 2, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
+    // ---------------- shared helpers ----------------
+
+    private fun soft(c: Canvas, x: Float, y: Float, r: Float, color: Int, mode: PorterDuff.Mode? = PorterDuff.Mode.SCREEN) {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        p.shader = RadialGradient(x, y, r, color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        if (mode != null) p.xfermode = PorterDuffXfermode(mode)
+        c.drawCircle(x, y, r, p)
+    }
+
+    private fun vignette(c: Canvas, w: Float, h: Float, strength: Int = 170) {
+        val p = Paint(Paint.DITHER_FLAG)
+        p.shader = RadialGradient(w * 0.5f, h * 0.45f, max(w, h) * 0.78f,
+            intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.argb(strength, 0, 0, 0)),
+            floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, w, h, p)
+    }
+
+    /** Fine film grain: hides 8-bit banding in smooth gradients and gives a matte finish. */
+    private fun grain(c: Canvas, w: Float, h: Float) {
+        val s = 96
+        val tile = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
+        val rnd = Random(7)
+        val px = IntArray(s * s) {
+            val v = rnd.nextInt(256)
+            if (rnd.nextBoolean()) Color.argb(9, 255, 255, 255) else Color.argb(11 + (v % 6), 0, 0, 0)
+        }
+        tile.setPixels(px, 0, s, 0, 0, s, s)
         val p = Paint()
-        p.color = Color.argb(28, 255, 255, 255); c.drawRect(0f, 0f, s.toFloat(), s.toFloat(), p)
-        c.drawRect(s.toFloat(), s.toFloat(), 2f * s, 2f * s, p)
-        p.color = Color.argb(10, 255, 255, 255); c.drawRect(s.toFloat(), 0f, 2f * s, s.toFloat(), p)
-        c.drawRect(0f, s.toFloat(), s.toFloat(), 2f * s, p)
-        return bmp
+        p.shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        c.drawRect(0f, 0f, w, h, p)
+        tile.recycle()
     }
 
-    override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        canvas.drawRect(0f, 0f, w, h, base)
-        if (style == CARBON) canvas.drawRect(0f, 0f, w, h, tex)
-        pattern?.let { canvas.drawBitmap(it, 0f, 0f, null) }
-        if (style != "nebula" && style != "orbit") {
-            canvas.drawRect(0f, 0f, w, h, glowTop)
-            canvas.drawRect(0f, 0f, w, h, glowBottom)
-        }
-        if (style == CARBON || style == "blueprint" || style == "circuit") corners(canvas, w, h)
+    private fun blurPaint(radius: Float, color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG).apply {
+        this.color = color
+        if (radius > 0.5f) maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
     }
 
-    private fun corners(canvas: Canvas, w: Float, h: Float) {
-        val i = 10 * unit
-        val l = 26 * unit
-        canvas.drawLine(i, i + l, i, i, frame); canvas.drawLine(i, i, i + l, i, frame)
-        canvas.drawLine(w - i - l, i, w - i, i, frame); canvas.drawLine(w - i, i, w - i, i + l, frame)
-        canvas.drawLine(i, h - i - l, i, h - i, frame); canvas.drawLine(i, h - i, i + l, h - i, frame)
-        canvas.drawLine(w - i - l, h - i, w - i, h - i, frame); canvas.drawLine(w - i, h - i, w - i, h - i - l, frame)
+    // ---------------- fluid glass ----------------
+
+    /** Deep colour blobs blending like liquid glass, with a soft glass highlight. */
+    private fun liquid(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(6, 6, 9))
+        val deep = hueShift(accent, 0f, 1f, 0.35f)
+        val warm = hueShift(accent, 28f, 0.9f, 0.9f)
+        val cool = hueShift(accent, -42f, 0.85f, 0.75f)
+        soft(c, w * 0.18f, h * 0.22f, w * 1.05f, a(deep, 255), null)
+        soft(c, w * 0.85f, h * 0.30f, w * 0.80f, a(accent, 210))
+        soft(c, w * 0.30f, h * 0.70f, w * 0.85f, a(cool, 180))
+        soft(c, w * 0.80f, h * 0.88f, w * 0.70f, a(warm, 150))
+        soft(c, w * 0.55f, h * 0.48f, w * 0.40f, a(Color.WHITE, 26))
+        // glass highlight streak
+        val streak = Path().apply {
+            moveTo(-w * 0.2f, h * 0.58f)
+            cubicTo(w * 0.3f, h * 0.40f, w * 0.7f, h * 0.52f, w * 1.2f, h * 0.30f)
+            lineTo(w * 1.2f, h * 0.36f)
+            cubicTo(w * 0.7f, h * 0.58f, w * 0.3f, h * 0.46f, -w * 0.2f, h * 0.64f)
+            close()
+        }
+        c.drawPath(streak, blurPaint(28f * unit, Color.argb(34, 255, 255, 255)))
+        vignette(c, w, h, 190)
     }
 
-    // ---------------- styles ----------------
-
-    private fun drawPattern(c: Canvas, w: Float, h: Float) {
-        val rnd = Random(0xA1FA)          // fixed seed: the same wallpaper every time
-        when (style) {
-            "circuit" -> circuit(c, w, h, rnd)
-            "hex" -> hex(c, w, h, rnd)
-            "topo" -> topo(c, w, h)
-            "nebula" -> nebula(c, w, h, rnd)
-            "blueprint" -> blueprint(c, w, h)
-            "waves" -> waves(c, w, h)
-            "orbit" -> orbit(c, w, h)
-        }
-    }
-
-    /** PCB traces: random walks on a grid with 45° bends, pads at the ends, a few lit nodes. */
-    private fun circuit(c: Canvas, w: Float, h: Float, rnd: Random) {
-        val g = 18f * unit
-        val cols = (w / g).toInt() + 1
-        val rows = (h / g).toInt() + 1
-        val dirs = listOf(0 to 1, 1 to 1, 1 to 0, 1 to -1, 0 to -1, -1 to -1, -1 to 0, -1 to 1)
-        line.strokeWidth = 1.4f * unit
-        repeat((cols * rows) / 9) {
-            var x = rnd.nextInt(cols)
-            var y = rnd.nextInt(rows)
-            var d = rnd.nextInt(4) * 2               // start straight
-            val path = Path().apply { moveTo(x * g, y * g) }
-            val steps = 3 + rnd.nextInt(9)
-            repeat(steps) {
-                if (rnd.nextFloat() < 0.3f) d = (d + if (rnd.nextBoolean()) 1 else 7) % 8
-                x += dirs[d].first; y += dirs[d].second
-                path.lineTo(x * g, y * g)
-            }
-            // brighter near the glow corners
-            val fx = x * g / w; val fy = y * g / h
-            val near = max(1f - hypot(fx - 0.85f, fy - 0.12f), 1f - hypot(fx - 0.1f, fy - 0.9f)).coerceIn(0f, 1f)
-            line.color = a(accent, (25 + 110 * near * near).toInt())
-            c.drawPath(path, line)
-            fill.color = a(accent, (60 + 150 * near).toInt())
-            c.drawCircle(x * g, y * g, 2.6f * unit, fill)
-            fill.color = Color.rgb(8, 8, 11)
-            c.drawCircle(x * g, y * g, 1.1f * unit, fill)
-        }
-        // a few glowing chips
-        repeat(5) {
-            val cx = rnd.nextFloat() * w; val cy = rnd.nextFloat() * h
-            fill.shader = RadialGradient(cx, cy, 40f * unit, a(accent, 70), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            c.drawCircle(cx, cy, 40f * unit, fill)
-            fill.shader = null
-        }
-    }
-
-    /** Honeycomb outlines fading from the glow, with a few filled cells. */
-    private fun hex(c: Canvas, w: Float, h: Float, rnd: Random) {
-        val r = 22f * unit
-        val hw = sqrt(3f) * r
-        line.strokeWidth = 1f * unit
-        var row = 0
-        var y = 0f
-        while (y < h + r) {
-            var x = if (row % 2 == 0) 0f else hw / 2
-            while (x < w + hw) {
-                val fx = x / w; val fy = y / h
-                val near = max(1f - hypot(fx - 0.85f, fy - 0.12f) * 1.3f, 1f - hypot(fx - 0.1f, fy - 0.9f) * 1.3f).coerceIn(0f, 1f)
-                val p = Path()
-                for (k in 0..5) {
-                    val ang = (PI / 3 * k + PI / 6).toFloat()
-                    val px = x + r * 0.92f * cos(ang); val py = y + r * 0.92f * sin(ang)
-                    if (k == 0) p.moveTo(px, py) else p.lineTo(px, py)
-                }
-                p.close()
-                if (rnd.nextFloat() < 0.035f * (0.3f + near)) {
-                    fill.color = a(accent, (40 + 90 * near).toInt()); c.drawPath(p, fill)
-                }
-                line.color = Color.argb((10 + 55 * near).toInt(), 255, 255, 255)
-                c.drawPath(p, line)
-                x += hw
-            }
-            y += r * 1.5f
-            row++
-        }
-    }
-
-    /** Topographic contour lines from a few smooth "hills". */
-    private fun topo(c: Canvas, w: Float, h: Float) {
-        val hills = listOf(Triple(0.72f, 0.28f, 1.0f), Triple(0.25f, 0.68f, 0.85f), Triple(0.62f, 0.86f, 0.6f))
-        fun height(px: Float, py: Float): Float {
-            var v = 0f
-            for ((hx, hy, s) in hills) {
-                val dx = px / w - hx; val dy = (py / h - hy) * (h / w)
-                v += s * kotlin.math.exp(-(dx * dx + dy * dy) * 7f)
-            }
-            return v + 0.04f * sin(px / w * 9f) * cos(py / h * 7f)
-        }
-        // marching squares on a coarse grid
-        val step = 6f * unit
-        val cols = (w / step).toInt() + 2
-        val rows = (h / step).toInt() + 2
-        val field = Array(rows) { j -> FloatArray(cols) { i -> height(i * step, j * step) } }
-        line.strokeWidth = 1.1f * unit
-        val levels = 22
-        for (l in 1 until levels) {
-            val iso = l / levels.toFloat() * 1.1f
-            val major = l % 5 == 0
-            line.color = if (major) a(accent, 150) else Color.argb(38, 255, 255, 255)
-            line.strokeWidth = (if (major) 1.6f else 1f) * unit
-            for (j in 0 until rows - 1) for (i in 0 until cols - 1) {
-                val v0 = field[j][i]; val v1 = field[j][i + 1]; val v2 = field[j + 1][i + 1]; val v3 = field[j + 1][i]
-                val idx = (if (v0 > iso) 1 else 0) or (if (v1 > iso) 2 else 0) or (if (v2 > iso) 4 else 0) or (if (v3 > iso) 8 else 0)
-                if (idx == 0 || idx == 15) continue
-                val x0 = i * step; val y0 = j * step
-                fun lerp(a1: Float, b1: Float) = ((iso - a1) / (b1 - a1)).coerceIn(0f, 1f)
-                val top = floatArrayOf(x0 + step * lerp(v0, v1), y0)
-                val right = floatArrayOf(x0 + step, y0 + step * lerp(v1, v2))
-                val bottom = floatArrayOf(x0 + step * lerp(v3, v2), y0 + step)
-                val left = floatArrayOf(x0, y0 + step * lerp(v0, v3))
-                val segs = when (idx) {
-                    1, 14 -> listOf(left to top)
-                    2, 13 -> listOf(top to right)
-                    3, 12 -> listOf(left to right)
-                    4, 11 -> listOf(right to bottom)
-                    5 -> listOf(left to top, right to bottom)
-                    6, 9 -> listOf(top to bottom)
-                    7, 8 -> listOf(left to bottom)
-                    10 -> listOf(top to right, bottom to left)
-                    else -> emptyList()
-                }
-                for ((p, q) in segs) c.drawLine(p[0], p[1], q[0], q[1], line)
-            }
-        }
-    }
-
-    /** Deep space: two-tone nebula clouds and a starfield. */
-    private fun nebula(c: Canvas, w: Float, h: Float, rnd: Random) {
-        val second = shifted(-55f)
-        val clouds = listOf(
-            Triple(0.78f, 0.22f, accent), Triple(0.3f, 0.45f, second), Triple(0.6f, 0.62f, accent),
-            Triple(0.15f, 0.85f, second), Triple(0.9f, 0.88f, accent),
+    /** Soft blurred light curtains rising from the bottom. */
+    private fun aurora(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(5, 5, 8))
+        soft(c, w * 0.5f, h * 1.05f, w * 1.2f, a(hueShift(accent, 0f, 1f, 0.45f), 255), null)
+        val bands = listOf(
+            Triple(0.15f, accent, 0.62f), Triple(0.42f, hueShift(accent, 35f), 0.5f),
+            Triple(0.68f, hueShift(accent, -30f), 0.58f), Triple(0.9f, accent, 0.45f),
         )
-        for ((cx, cy, col) in clouds) {
-            val rad = w * (0.45f + rnd.nextFloat() * 0.35f)
-            fill.shader = RadialGradient(cx * w, cy * h, rad, a(col, 70 + rnd.nextInt(40)), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            c.drawCircle(cx * w, cy * h, rad, fill)
+        for ((cx, col, top) in bands) {
+            val p = Path()
+            val x0 = cx * w
+            val bw = w * 0.22f
+            p.moveTo(x0 - bw, h)
+            p.cubicTo(x0 - bw * 1.4f, h * (top + 0.25f), x0 + bw * 0.2f, h * (top + 0.05f), x0 - bw * 0.3f, h * top)
+            p.cubicTo(x0 + bw * 0.6f, h * (top + 0.02f), x0 + bw * 1.6f, h * (top + 0.3f), x0 + bw, h)
+            p.close()
+            val paint = blurPaint(46f * unit, Color.WHITE)
+            paint.shader = LinearGradient(0f, h * top, 0f, h, a(col, 0), a(col, 190), Shader.TileMode.CLAMP)
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+            c.drawPath(p, paint)
         }
-        fill.shader = null
-        val stars = (w * h / (unit * unit * 900f)).toInt().coerceIn(150, 1600)
-        repeat(stars) {
-            val x = rnd.nextFloat() * w; val y = rnd.nextFloat() * h
-            val big = rnd.nextFloat() < 0.04f
-            fill.color = Color.argb(if (big) 230 else 60 + rnd.nextInt(150), 255, 255, 255)
-            c.drawCircle(x, y, (if (big) 1.6f else 0.4f + rnd.nextFloat() * 0.7f) * unit, fill)
-            if (big) {
-                fill.shader = RadialGradient(x, y, 7f * unit, Color.argb(90, 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-                c.drawCircle(x, y, 7f * unit, fill); fill.shader = null
+        vignette(c, w, h, 150)
+    }
+
+    // ---------------- 3D depth ----------------
+
+    /** Low-poly facets with real light and shadow, lit from the top-right in the accent colour. */
+    private fun prism(c: Canvas, w: Float, h: Float) {
+        val rnd = Random(0xA1FA)
+        val cell = 64f * unit
+        val cols = (w / cell).toInt() + 2
+        val rows = (h / cell).toInt() + 2
+        val xs = Array(rows) { j -> FloatArray(cols) { i -> (i + (rnd.nextFloat() - 0.5f) * 0.8f) * cell } }
+        val ys = Array(rows) { j -> FloatArray(cols) { i -> (j + (rnd.nextFloat() - 0.5f) * 0.8f) * cell } }
+        val zs = Array(rows) { FloatArray(cols) { rnd.nextFloat() } }
+        val lx = w * 0.95f
+        val ly = h * 0.05f
+        val dark = Color.rgb(9, 9, 13)
+        val lit = hueShift(accent, 0f, 0.95f, 0.85f)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.6f * unit; color = Color.argb(14, 255, 255, 255) }
+        fun tri(ax: Float, ay: Float, az: Float, bx: Float, by: Float, bz: Float, cx: Float, cy: Float, cz: Float) {
+            // face normal from the 3 lifted vertices
+            val ux = bx - ax; val uy = by - ay; val uz = (bz - az) * cell
+            val vx = cx - ax; val vy = cy - ay; val vz = (cz - az) * cell
+            var nx = uy * vz - uz * vy; var ny = uz * vx - ux * vz; var nz = ux * vy - uy * vx
+            val nl = kotlin.math.sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-3f)
+            nx /= nl; ny /= nl; nz /= nl
+            if (nz < 0) { nx = -nx; ny = -ny; nz = -nz }
+            val mx = (ax + bx + cx) / 3f; val my = (ay + by + cy) / 3f
+            // light direction (top-right, slightly toward viewer)
+            var ldx = lx - mx; var ldy = ly - my; var ldz = w * 0.6f
+            val ll = kotlin.math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz)
+            ldx /= ll; ldy /= ll; ldz /= ll
+            val diffuse = (nx * ldx + ny * ldy + nz * ldz).coerceIn(0f, 1f)
+            val dist = (hypot(mx - lx, my - ly) / hypot(w, h)).coerceIn(0f, 1f)
+            val intensity = (diffuse * diffuse * (1f - dist) * 1.15f).coerceIn(0f, 1f)
+            fill.color = mix(dark, lit, intensity * 0.85f)
+            val p = Path().apply { moveTo(ax, ay); lineTo(bx, by); lineTo(cx, cy); close() }
+            c.drawPath(p, fill)
+            c.drawPath(p, edge)
+        }
+        for (j in 0 until rows - 1) for (i in 0 until cols - 1) {
+            val flip = (i + j) % 2 == 0
+            if (flip) {
+                tri(xs[j][i], ys[j][i], zs[j][i], xs[j][i + 1], ys[j][i + 1], zs[j][i + 1], xs[j + 1][i], ys[j + 1][i], zs[j + 1][i])
+                tri(xs[j][i + 1], ys[j][i + 1], zs[j][i + 1], xs[j + 1][i + 1], ys[j + 1][i + 1], zs[j + 1][i + 1], xs[j + 1][i], ys[j + 1][i], zs[j + 1][i])
+            } else {
+                tri(xs[j][i], ys[j][i], zs[j][i], xs[j][i + 1], ys[j][i + 1], zs[j][i + 1], xs[j + 1][i + 1], ys[j + 1][i + 1], zs[j + 1][i + 1])
+                tri(xs[j][i], ys[j][i], zs[j][i], xs[j + 1][i + 1], ys[j + 1][i + 1], zs[j + 1][i + 1], xs[j + 1][i], ys[j + 1][i], zs[j + 1][i])
             }
         }
+        soft(c, lx, ly, w * 0.7f, a(accent, 70))
+        vignette(c, w, h, 150)
     }
 
-    /** Engineering grid with technical marks. */
-    private fun blueprint(c: Canvas, w: Float, h: Float) {
-        val minor = 12f * unit
-        val major = minor * 5
-        line.strokeWidth = 1f
-        var x = 0f
-        while (x < w) {
-            val m = (x / minor).toInt() % 5 == 0
-            line.color = if (m) a(accent, 46) else Color.argb(14, 255, 255, 255)
-            c.drawLine(x, 0f, x, h, line); x += minor
-        }
-        var y = 0f
-        while (y < h) {
-            val m = (y / minor).toInt() % 5 == 0
-            line.color = if (m) a(accent, 46) else Color.argb(14, 255, 255, 255)
-            c.drawLine(0f, y, w, y, line); y += minor
-        }
-        line.strokeWidth = 1.3f * unit
-        line.color = a(accent, 120)
-        // compass / crosshair marks
-        fun mark(cx: Float, cy: Float, r: Float) {
-            c.drawCircle(cx, cy, r, line)
-            c.drawCircle(cx, cy, r * 0.62f, line)
-            c.drawLine(cx - r * 1.3f, cy, cx + r * 1.3f, cy, line)
-            c.drawLine(cx, cy - r * 1.3f, cx, cy + r * 1.3f, line)
-        }
-        mark(w * 0.78f, h * 0.24f, major * 1.2f)
-        mark(w * 0.22f, h * 0.74f, major * 0.8f)
-        // dimension lines
-        line.color = a(accent, 80)
-        val dy = h * 0.5f
-        c.drawLine(w * 0.12f, dy, w * 0.88f, dy, line)
-        c.drawLine(w * 0.12f, dy - 6 * unit, w * 0.12f, dy + 6 * unit, line)
-        c.drawLine(w * 0.88f, dy - 6 * unit, w * 0.88f, dy + 6 * unit, line)
-    }
-
-    /** Flowing layered wave lines. */
-    private fun waves(c: Canvas, w: Float, h: Float) {
-        val n = 34
-        line.strokeWidth = 1.3f * unit
+    /** Stacked paper-cut waves with drop shadows and an accent rim light on each edge. */
+    private fun layers(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(8, 8, 12))
+        soft(c, w * 0.7f, h * 0.18f, w * 0.9f, a(accent, 120))
+        val n = 7
         for (k in 0 until n) {
-            val t = k / (n - 1f)
-            val baseY = h * (0.35f + 0.55f * t)
-            val amp = h * (0.03f + 0.05f * sin(t * PI.toFloat()))
+            val t = k / (n - 1f)                      // 0 = back, 1 = front
+            val baseY = h * (0.30f + 0.11f * k)
+            val amp = h * (0.035f + 0.01f * k)
+            val phase = k * 1.3f
             val p = Path()
+            p.moveTo(0f, h)
             var x = 0f
-            val step = 6f * unit
+            val step = 8f * unit
+            p.lineTo(0f, baseY)
+            val edge = Path().apply { moveTo(0f, baseY) }
             while (x <= w + step) {
                 val fx = x / w
-                val yy = baseY + amp * sin(fx * 6.2f + t * 3.1f) + amp * 0.5f * sin(fx * 13f - t * 5f)
-                if (x == 0f) p.moveTo(x, yy) else p.lineTo(x, yy)
+                val y = baseY + amp * sin(fx * 5.5f + phase) + amp * 0.45f * sin(fx * 11f - phase)
+                p.lineTo(x, y); edge.lineTo(x, y)
                 x += step
             }
-            val glow = (1f - kotlin.math.abs(t - 0.45f) * 1.6f).coerceIn(0f, 1f)
-            line.color = a(accent, (20 + 150 * glow * glow).toInt())
-            c.drawPath(p, line)
+            p.lineTo(w, h); p.close()
+            // shadow cast on the layer behind
+            c.save(); c.translate(0f, -6f * unit)
+            c.drawPath(p, blurPaint(16f * unit, Color.argb(160, 0, 0, 0)))
+            c.restore()
+            // body: darker toward the front, faintly lit at the top
+            val body = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+            val top = mix(Color.rgb(24, 22, 28), hueShift(accent, 0f, 0.6f, 0.35f), 0.55f - 0.4f * t)
+            val bottom = Color.rgb(6, 6, 9)
+            body.shader = LinearGradient(0f, baseY - amp, 0f, baseY + h * 0.25f, top, bottom, Shader.TileMode.CLAMP)
+            c.drawPath(p, body)
+            // rim light on the crest
+            val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = (1.2f + 0.6f * (1f - t)) * unit
+                color = a(accent, (190 - 120 * t).toInt())
+            }
+            c.drawPath(edge, rim)
+        }
+        vignette(c, w, h, 120)
+    }
+
+    // ---------------- matte minimal ----------------
+
+    /** Nothing-OS-style dot matrix: dots fade in from a soft glow; a ring of accent dots. */
+    private fun dots(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(9, 9, 11))
+        val g = 11f * unit
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        val gx = w * 0.68f
+        val gy = h * 0.34f
+        val ringR = w * 0.34f
+        var y = g / 2
+        while (y < h) {
+            var x = g / 2
+            while (x < w) {
+                val d = hypot(x - gx, y - gy)
+                val fade = (1f - d / (max(w, h) * 0.75f)).coerceIn(0f, 1f)
+                val onRing = kotlin.math.abs(d - ringR) < g * 0.6f
+                if (onRing) {
+                    p.color = a(accent, 235)
+                    c.drawCircle(x, y, 1.9f * unit, p)
+                } else {
+                    p.color = Color.argb((14 + 70 * fade * fade).toInt(), 255, 255, 255)
+                    c.drawCircle(x, y, 1.15f * unit, p)
+                }
+                x += g
+            }
+            y += g
+        }
+        soft(c, gx, gy, ringR * 1.25f, a(accent, 40))
+    }
+
+    /** Matte black with one soft diagonal light beam in the accent colour. */
+    private fun beam(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(7, 7, 9))
+        val p = Path().apply {
+            moveTo(w * 0.78f, -h * 0.05f)
+            lineTo(w * 0.98f, -h * 0.05f)
+            lineTo(w * 0.35f, h * 1.05f)
+            lineTo(-w * 0.15f, h * 1.05f)
+            close()
+        }
+        val glow = blurPaint(60f * unit, Color.WHITE).apply {
+            shader = LinearGradient(w * 0.88f, 0f, w * 0.1f, h, a(accent, 170), a(accent, 0), Shader.TileMode.CLAMP)
+        }
+        c.drawPath(p, glow)
+        val core = Path().apply {
+            moveTo(w * 0.86f, -h * 0.05f); lineTo(w * 0.9f, -h * 0.05f)
+            lineTo(w * 0.22f, h * 1.05f); lineTo(w * 0.14f, h * 1.05f); close()
+        }
+        val corePaint = blurPaint(14f * unit, Color.WHITE).apply {
+            shader = LinearGradient(w * 0.88f, 0f, w * 0.2f, h, Color.argb(70, 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        }
+        c.drawPath(core, corePaint)
+        soft(c, w * 0.9f, 0f, w * 0.5f, a(accent, 90))
+        vignette(c, w, h, 120)
+    }
+
+    /** A thin glowing arc of light rising over black, like a planet's edge at sunrise. */
+    private fun eclipse(c: Canvas, w: Float, h: Float) {
+        c.drawColor(Color.rgb(4, 4, 6))
+        val r = w * 1.35f
+        val cx = w * 0.5f
+        val cy = h * 0.78f + r
+        val oval = RectF(cx - r, cy - r, cx + r, cy + r)
+        // wide bloom, then the bright thin edge
+        val bloom = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 46f * unit; color = a(accent, 120)
+            maskFilter = BlurMaskFilter(40f * unit, BlurMaskFilter.Blur.NORMAL)
+        }
+        c.drawArc(oval, 200f, 140f, false, bloom)
+        val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 2.2f * unit
+            shader = LinearGradient(0f, 0f, w, 0f,
+                intArrayOf(Color.TRANSPARENT, a(accent, 255), Color.WHITE, a(accent, 255), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.3f, 0.5f, 0.7f, 1f), Shader.TileMode.CLAMP)
+        }
+        c.drawArc(oval, 200f, 140f, false, edge)
+        // the dark planet body below the arc
+        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(2, 2, 3) }
+        c.drawCircle(cx, cy + 3f * unit, r - 1.5f * unit, body)
+        soft(c, cx, h * 0.78f, w * 0.6f, a(accent, 60))
+        // a few distant stars
+        val rnd = Random(3)
+        val sp = Paint(Paint.ANTI_ALIAS_FLAG)
+        repeat(70) {
+            val x = rnd.nextFloat() * w; val y = rnd.nextFloat() * h * 0.7f
+            sp.color = Color.argb(30 + rnd.nextInt(110), 255, 255, 255)
+            c.drawCircle(x, y, (0.4f + rnd.nextFloat() * 0.8f) * unit, sp)
         }
     }
 
-    /** Minimal: soft gradient, one big glow and orbit rings like ALFA's dial. */
-    private fun orbit(c: Canvas, w: Float, h: Float) {
-        val cx = w * 0.62f
-        val cy = h * 0.42f
-        fill.shader = RadialGradient(cx, cy, w * 0.9f, a(accent, 80), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        c.drawCircle(cx, cy, w * 0.9f, fill)
-        fill.shader = null
-        line.strokeWidth = 1.2f * unit
-        val radii = listOf(0.22f, 0.36f, 0.52f, 0.7f, 0.9f)
-        radii.forEachIndexed { i, r ->
-            line.color = if (i == 1) a(accent, 140) else Color.argb(26, 255, 255, 255)
-            c.drawCircle(cx, cy, w * r, line)
+    // ---------------- your photos ----------------
+
+    /** User photo, centre-cropped to the screen, optionally darkened and accent-tinted. */
+    private fun photo(c: Canvas, w: Float, h: Float, name: String) {
+        c.drawColor(Color.rgb(7, 7, 10))
+        val f = File(File(context.filesDir, "wallpapers"), name)
+        if (!f.exists()) return
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.path, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= w && bounds.outHeight / (sample * 2) >= h) sample *= 2
+        val src = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+        val scale = max(w / src.width, h / src.height)
+        val dw = src.width * scale
+        val dh = src.height * scale
+        val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
+        c.drawBitmap(src, Rect(0, 0, src.width, src.height), dst, Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG))
+        src.recycle()
+        val prefs = context.getSharedPreferences("alfa", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("photo_tint", false)) {
+            soft(c, w * 0.5f, h, max(w, h) * 0.8f, a(accent, 110))
+            val t = Paint().apply { color = a(accent, 40); xfermode = PorterDuffXfermode(PorterDuff.Mode.OVERLAY) }
+            c.drawRect(0f, 0f, w, h, t)
         }
-        // a few "satellites" on the rings
-        listOf(0.36f to 300.0, 0.52f to 140.0, 0.7f to 220.0, 0.22f to 40.0).forEach { (r, deg) ->
-            val ang = Math.toRadians(deg)
-            val px = cx + (w * r * cos(ang)).toFloat(); val py = cy + (w * r * sin(ang)).toFloat()
-            fill.color = a(accent, 220); c.drawCircle(px, py, 3.5f * unit, fill)
-            fill.shader = RadialGradient(px, py, 14f * unit, a(accent, 90), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            c.drawCircle(px, py, 14f * unit, fill); fill.shader = null
+        if (prefs.getBoolean("photo_dim", true)) {
+            val d = Paint(Paint.DITHER_FLAG)
+            d.shader = LinearGradient(0f, 0f, 0f, h,
+                intArrayOf(Color.argb(110, 0, 0, 0), Color.argb(40, 0, 0, 0), Color.argb(130, 0, 0, 0)),
+                floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+            c.drawRect(0f, 0f, w, h, d)
         }
-        // tick ring
-        line.color = Color.argb(60, 255, 255, 255)
-        line.strokeWidth = 1f * unit
-        val tr = w * 0.36f
-        for (k in 0 until 72) {
-            val ang = (k * 5.0).let { Math.toRadians(it) }
-            val l = if (k % 6 == 0) 9f * unit else 4f * unit
-            val x1 = cx + (tr + 6 * unit) * cos(ang).toFloat(); val y1 = cy + (tr + 6 * unit) * sin(ang).toFloat()
-            val x2 = cx + (tr + 6 * unit + l) * cos(ang).toFloat(); val y2 = cy + (tr + 6 * unit + l) * sin(ang).toFloat()
-            c.drawLine(x1, y1, x2, y2, line)
-        }
-        min(w, h) // keep import used
+        min(w, h); cos(0f) // keep imports used
     }
 }

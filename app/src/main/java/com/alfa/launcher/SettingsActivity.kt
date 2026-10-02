@@ -40,6 +40,7 @@ class SettingsActivity : Activity() {
 
     companion object {
         private const val REQ_LOGO = 51
+        private const val REQ_PHOTOS = 53
     }
 
     private val prefs by lazy { getSharedPreferences("alfa", MODE_PRIVATE) }
@@ -86,6 +87,32 @@ class SettingsActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PHOTOS && resultCode == RESULT_OK && data != null) {
+            val uris = ArrayList<android.net.Uri>()
+            data.clipData?.let { cd -> for (k in 0 until cd.itemCount) uris.add(cd.getItemAt(k).uri) }
+            if (uris.isEmpty()) data.data?.let { uris.add(it) }
+            if (uris.isEmpty()) return
+            toast("Adding ${uris.size} photo${if (uris.size > 1) "s" else ""}…")
+            io.execute {
+                var first: String? = null
+                var failed = 0
+                for (u in uris) {
+                    try { val id = WallpaperSync.importPhoto(this, u); if (first == null) first = id } catch (e: Exception) { failed++ }
+                }
+                main.post {
+                    if (isDestroyed) return@post
+                    if (failed > 0) toast("$failed image(s) couldn't be read")
+                    val pick = first
+                    if (pick != null) {
+                        // use the first new photo straight away
+                        WallpaperSync.setStyle(this, pick)
+                        bgView.style = pick
+                        applyCarbonWallpaper(accent)
+                    } else build()
+                }
+            }
+            return
+        }
         if (requestCode == REQ_LOGO && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             io.execute {
@@ -272,7 +299,7 @@ class SettingsActivity : Activity() {
             isHorizontalScrollBarEnabled = false
             addView(strip)
         }
-        if (thumbsAccent != accent) { thumbs.values.forEach { it.recycle() }; thumbs.clear(); thumbsAccent = accent }
+        if (thumbsAccent != accent) { thumbs.clear(); thumbsAccent = accent }
         val current = WallpaperSync.style(this)
         val (sw, sh) = WallpaperSync.screenSize(this)
         val tw = dp(78)
@@ -325,6 +352,108 @@ class SettingsActivity : Activity() {
         }
         box.addView(hs, lp(12))
         card.addView(box)
+
+        // ---- your photos ----
+        line(card)
+        val pbox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), 0, dp(14))
+        }
+        pbox.addView(tv("Your photos", 15f, white))
+        pbox.addView(tv("Add your own images. Tap to use, long-press to remove.", 12f, dim), lp(3))
+        val pstrip = LinearLayout(this).apply { setPadding(0, 0, dp(16), 0) }
+        val phs = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(pstrip) }
+        // "+" tile
+        val add = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(15).toFloat(); setColor(Color.argb(18, 255, 255, 255))
+                setStroke(dp(1), Color.argb(60, 255, 255, 255))
+            }
+            addView(tv("+", 30f, accent, font = "sans-serif-light").apply { gravity = Gravity.CENTER },
+                FrameLayout.LayoutParams(tw + dp(6), th + dp(6)))
+            setOnClickListener { tick(it); pickPhotos() }
+        }
+        pstrip.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            addView(add)
+            addView(tv("Add", 11f, dim, mono = true).apply { gravity = Gravity.CENTER }, lp(6))
+        }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
+        WallpaperSync.photos(this).forEach { name ->
+            val id = HudBackground.PHOTO_PREFIX + name
+            val on = id == current
+            val img = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) =
+                        outline.setRoundRect(0, 0, view.width, view.height, dp(12).toFloat())
+                }
+                clipToOutline = true
+            }
+            val frame = FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(15).toFloat(); setColor(Color.TRANSPARENT)
+                    setStroke(dp(if (on) 3 else 1), if (on) accent else Color.argb(40, 255, 255, 255))
+                }
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+                addView(img, FrameLayout.LayoutParams(tw, th))
+                setOnClickListener {
+                    if (on) return@setOnClickListener
+                    tick(it)
+                    WallpaperSync.setStyle(this@SettingsActivity, id)
+                    bgView.style = id
+                    applyCarbonWallpaper(accent)
+                }
+                setOnLongClickListener {
+                    android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_Material_Dialog_Alert)
+                        .setMessage("Remove this photo from ALFA?")
+                        .setPositiveButton("Remove") { _, _ ->
+                            WallpaperSync.deletePhoto(this@SettingsActivity, name)
+                            thumbs.remove(id)
+                            if (on) { WallpaperSync.setStyle(this@SettingsActivity, HudBackground.DEFAULT); bgView.style = HudBackground.DEFAULT; applyCarbonWallpaper(accent) }
+                            else build()
+                        }
+                        .setNegativeButton("Cancel", null).show()
+                    true
+                }
+            }
+            pstrip.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+                addView(frame)
+                addView(tv(if (on) "In use" else "Photo", 11f, if (on) accent else dim, mono = true).apply { gravity = Gravity.CENTER }, lp(6))
+            }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
+            val cached = thumbs[id]
+            if (cached != null) img.setImageBitmap(cached) else {
+                val color = accent
+                io.execute {
+                    val bmp = try { WallpaperSync.render(this, color, id, scale) } catch (e: Exception) { null }
+                    main.post { if (bmp != null && !isDestroyed) { thumbs[id] = bmp; img.setImageBitmap(bmp) } }
+                }
+            }
+        }
+        pbox.addView(phs, lp(12))
+        card.addView(pbox)
+        if (current.startsWith(HudBackground.PHOTO_PREFIX)) {
+            line(card)
+            toggleRow(card, "Darken photo", "Keeps the clock and icons readable on bright photos", "photo_dim", true) {
+                thumbs.remove(current); applyCarbonWallpaper(accent)
+            }
+            line(card)
+            toggleRow(card, "Tint with accent", "Washes the photo in your accent colour", "photo_tint", false) {
+                thumbs.remove(current); applyCarbonWallpaper(accent)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun pickPhotos() {
+        val i = if (Build.VERSION.SDK_INT >= 33) {
+            Intent(android.provider.MediaStore.ACTION_PICK_IMAGES).setType("image/*")
+                .putExtra(android.provider.MediaStore.EXTRA_PICK_IMAGES_MAX, 10)
+        } else {
+            Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        try { startActivityForResult(i, REQ_PHOTOS) } catch (e: Exception) { toast("No image picker available") }
     }
 
     /** Renders ALFA carbon in [color] and sets it as the real system wallpaper. */
@@ -478,7 +607,7 @@ class SettingsActivity : Activity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun toggleRow(card: LinearLayout, title: String, sub: String, key: String, def: Boolean) {
+    private fun toggleRow(card: LinearLayout, title: String, sub: String, key: String, def: Boolean, onChange: ((Boolean) -> Unit)? = null) {
         val sw = Switch(this).apply {
             isChecked = prefs.getBoolean(key, def)
             val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
@@ -489,6 +618,7 @@ class SettingsActivity : Activity() {
             setOnCheckedChangeListener { v, checked ->
                 tick(v)
                 prefs.edit().putBoolean(key, checked).apply()
+                onChange?.invoke(checked)
             }
         }
         val row = LinearLayout(this).apply {
