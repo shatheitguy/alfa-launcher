@@ -814,8 +814,14 @@ class MainActivity : Activity() {
         galaxyView.haptics = on
     }
 
+    /**
+     * One wallpaper everywhere: if ALFA carbon is already the system wallpaper (or the user
+     * chose their own), just show the system wallpaper. Only draw carbon ourselves while it
+     * hasn't been applied to the system yet.
+     */
     private fun applyBackground() {
-        hud.visibility = if (prefs.getBoolean("wallpaper", false)) View.GONE else View.VISIBLE
+        val ownWallpaper = prefs.getBoolean("wallpaper", false)
+        hud.visibility = if (ownWallpaper || WallpaperSync.isApplied(this, accent)) View.GONE else View.VISIBLE
     }
 
     private fun applyAccent() {
