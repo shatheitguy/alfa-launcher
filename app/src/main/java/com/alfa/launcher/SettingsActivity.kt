@@ -251,6 +251,10 @@ class SettingsActivity : Activity() {
         line(card)
         toggleRow(card, "Network line", "Connection type and local IP under the clock", "show_net", true)
         line(card)
+        toggleRow(card, "All apps in clone profile",
+            "Off: only apps you cloned (WhatsApp, Messenger…). On: also Files, Play Store and other system apps in the dual-app profile",
+            "clone_show_all", false)
+        line(card)
         actionRow(card, "Reset orbit & dock", "Put the default apps back", null) {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("Reset home layout?")

@@ -143,6 +143,7 @@ class MainActivity : Activity() {
     private var accent = 0
     private var iconStyle = IconStyler.NEON
     private var styleJob = 0
+    private var lastCloneShowAll = false
     private var tickCount = 0
 
     // app changes in ANY profile (main, work, dual/clone apps)
@@ -234,6 +235,7 @@ class MainActivity : Activity() {
 
         accent = accentOf(this)
         iconStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
+        lastCloneShowAll = prefs.getBoolean("clone_show_all", false)
 
         swipe.home = home
         swipe.listener = object : SwipeLayout.Listener {
@@ -426,9 +428,14 @@ class MainActivity : Activity() {
                 val acts = try { la.getActivityList(null, user) } catch (e: Exception) { emptyList() }
                 val main = user == me
                 val tag = if (main) "" else um.getSerialNumberForUser(user).toString()
+                // Clone / dual-app profiles also contain the system apps Android needs there
+                // (Files, Play Store, Chrome…). Like the stock launchers, only show the apps
+                // the user actually chose to clone, unless "show all" is switched on.
+                val hideSystem = !main && !prefs.getBoolean("clone_show_all", false) && isCloneProfile(user)
                 for (a in acts) {
                     val cn = a.componentName
                     if (main && cn.packageName == packageName) continue
+                    if (hideSystem && (a.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) continue
                     var label = a.label?.toString() ?: cn.packageName
                     if (!main) {
                         val badged = packageManager.getUserBadgedLabel(label, user).toString()
@@ -451,6 +458,26 @@ class MainActivity : Activity() {
                 }
         }
         return out
+    }
+
+    /**
+     * True for clone / dual-app profiles, false for work (managed) and private profiles.
+     * Android 15+ reports the profile type directly; older versions are detected by the
+     * missing "Work" badge (work profiles always badge labels, clone profiles don't).
+     */
+    private fun isCloneProfile(user: UserHandle): Boolean {
+        if (Build.VERSION.SDK_INT >= 35) {
+            try {
+                val la = launcherApps ?: return false
+                val info = la.javaClass.getMethod("getLauncherUserInfo", UserHandle::class.java).invoke(la, user)
+                val type = info?.javaClass?.getMethod("getUserType")?.invoke(info) as? String
+                if (type != null) return type == "android.os.usertype.profile.CLONE"
+            } catch (e: Exception) {
+                // fall back to the badge check
+            }
+        }
+        val probe = "ALFA"
+        return packageManager.getUserBadgedLabel(probe, user).toString() == probe
     }
 
     private fun styleAll(list: List<AppEntry>, style: String, color: Int): List<AppEntry> =
@@ -676,6 +703,12 @@ class MainActivity : Activity() {
         refreshProfile()
         toolsRow.visibility = if (prefs.getBoolean("show_tools", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.netRow).visibility = if (prefs.getBoolean("show_net", true)) View.VISIBLE else View.GONE
+        // clone-profile filter changed: rebuild the app list
+        val cloneAll = prefs.getBoolean("clone_show_all", false)
+        if (cloneAll != lastCloneShowAll) {
+            lastCloneShowAll = cloneAll
+            if (rawApps.isNotEmpty()) loadApps()
+        }
         // "Reset orbit & dock" clears these; rebuild the defaults
         if (!prefs.contains("orbit") && allApps.isNotEmpty()) {
             initDefaults()
