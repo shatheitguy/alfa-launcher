@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- ALFA carbon is applied as the real system wallpaper (one wallpaper everywhere) -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- self-update: ALFA installs its own new versions (user confirms each one) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

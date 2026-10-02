@@ -204,7 +204,8 @@ class SettingsActivity : Activity() {
                 setOnClickListener {
                     tick(it)
                     prefs.edit().putInt("accent", c).apply()
-                    build()
+                    // carbon wallpaper follows the accent colour
+                    if (!prefs.getBoolean("wallpaper", false)) applyCarbonWallpaper(c) else build()
                 }
             }
             val size = if (selected) dp(34) else dp(28)
@@ -225,12 +226,44 @@ class SettingsActivity : Activity() {
 
         // background
         val wall = prefs.getBoolean("wallpaper", false)
-        choiceRow(card, "Background", listOf("ALFA carbon" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
-            prefs.edit().putBoolean("wallpaper", it == "wall").apply(); build()
+        choiceRow(card, "Wallpaper", listOf("ALFA carbon" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
+            if (it == "carbon") {
+                prefs.edit().putBoolean("wallpaper", false).apply()
+                applyCarbonWallpaper(accent)
+            } else {
+                prefs.edit().putBoolean("wallpaper", true).apply()
+                WallpaperSync.markCustom(this)
+                build()
+                startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Choose your wallpaper"))
+            }
         }
-        line(card)
-        actionRow(card, "Change wallpaper", "Pick a system wallpaper", null) {
-            startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
+        if (!wall) {
+            val applied = WallpaperSync.isApplied(this, accent)
+            line(card)
+            actionRow(card, if (applied) "Carbon is your system wallpaper ✓" else "Apply carbon as system wallpaper",
+                "One wallpaper for home, Recents and app switching, in your accent colour",
+                if (applied) null else "Apply") { applyCarbonWallpaper(accent) }
+            line(card)
+            toggleRow(card, "Also on lock screen", "Use the carbon wallpaper on the lock screen too", "wall_lock", false)
+        } else {
+            line(card)
+            actionRow(card, "Change wallpaper", "Pick a system wallpaper — ALFA shows the same one", null) {
+                startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
+            }
+        }
+    }
+
+    /** Renders ALFA carbon in [color] and sets it as the real system wallpaper. */
+    private fun applyCarbonWallpaper(color: Int) {
+        toast("Setting carbon wallpaper…")
+        val lock = prefs.getBoolean("wall_lock", false)
+        io.execute {
+            val ok = try { WallpaperSync.applyCarbon(this, color, lock); true } catch (e: Exception) { false }
+            main.post {
+                if (isDestroyed) return@post
+                toast(if (ok) "Wallpaper set" else "Couldn't set the wallpaper")
+                build()
+            }
         }
     }
 
