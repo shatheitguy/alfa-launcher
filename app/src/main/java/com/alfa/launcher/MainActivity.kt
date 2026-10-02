@@ -738,7 +738,7 @@ class MainActivity : Activity() {
         applyHaptics()
         refreshProfile()
         toolsRow.visibility = if (prefs.getBoolean("show_tools", true)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.netRow).visibility = if (prefs.getBoolean("show_net", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.netRow).visibility = View.GONE // removed from the home screen (Network info is in IT Tools)
         // clone-profile filter changed: rebuild the app list
         val cloneAll = prefs.getBoolean("clone_show_all", false)
         if (cloneAll != lastCloneShowAll) {
