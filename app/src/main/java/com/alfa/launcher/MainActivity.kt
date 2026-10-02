@@ -816,7 +816,7 @@ class MainActivity : Activity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         }
         val sub = TextView(this).apply {
-            text = "PING · QR · NETWORK · +8  ›"
+            text = "SPEED · WI-FI · SSL · +12  ›"
             typeface = Typeface.MONOSPACE
             letterSpacing = 0.08f
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)

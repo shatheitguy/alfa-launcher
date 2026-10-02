@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Wi-Fi details: signal / band / channel. Location is only asked for (optionally) to show the network name. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <!-- self-update: ALFA installs its own new versions (user confirms each one) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
