@@ -137,7 +137,7 @@ class ToolsActivity : Activity() {
         accent = MainActivity.accentOf(this)
 
         val root = FrameLayout(this)
-        root.addView(HudBackground(this, null).also { it.accent = accent }, FrameLayout.LayoutParams(-1, -1))
+        root.addView(HudBackground(this, null).also { it.accent = accent; it.style = WallpaperSync.style(this) }, FrameLayout.LayoutParams(-1, -1))
         scroll = ScrollView(this).apply { isFillViewport = true }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

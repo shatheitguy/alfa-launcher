@@ -48,6 +48,10 @@ class SettingsActivity : Activity() {
     private var accent = 0
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
+    private lateinit var bgView: HudBackground
+    // rendered style previews, cached per accent so rebuilding the screen stays instant
+    private val thumbs = HashMap<String, android.graphics.Bitmap>()
+    private var thumbsAccent = 0
 
     private val white = Color.WHITE
     private val dim = Color.argb(150, 255, 255, 255)
@@ -56,7 +60,8 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = FrameLayout(this)
-        root.addView(HudBackground(this, null).also { it.accent = MainActivity.accentOf(this) }, FrameLayout.LayoutParams(-1, -1))
+        bgView = HudBackground(this, null).also { it.accent = MainActivity.accentOf(this); it.style = WallpaperSync.style(this) }
+        root.addView(bgView, FrameLayout.LayoutParams(-1, -1))
         scroll = ScrollView(this).apply { isFillViewport = true }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -226,7 +231,7 @@ class SettingsActivity : Activity() {
 
         // background
         val wall = prefs.getBoolean("wallpaper", false)
-        choiceRow(card, "Wallpaper", listOf("ALFA carbon" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
+        choiceRow(card, "Wallpaper", listOf("ALFA wallpaper" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
             if (it == "carbon") {
                 prefs.edit().putBoolean("wallpaper", false).apply()
                 applyCarbonWallpaper(accent)
@@ -238,13 +243,15 @@ class SettingsActivity : Activity() {
             }
         }
         if (!wall) {
+            line(card)
+            styleRow(card)
             val applied = WallpaperSync.isApplied(this, accent)
             line(card)
-            actionRow(card, if (applied) "Carbon is your system wallpaper ✓" else "Apply carbon as system wallpaper",
+            actionRow(card, if (applied) "Set as your system wallpaper ✓" else "Apply as system wallpaper",
                 "One wallpaper for home, Recents and app switching, in your accent colour",
                 if (applied) null else "Apply") { applyCarbonWallpaper(accent) }
             line(card)
-            toggleRow(card, "Also on lock screen", "Use the carbon wallpaper on the lock screen too", "wall_lock", false)
+            toggleRow(card, "Also on lock screen", "Use the ALFA wallpaper on the lock screen too", "wall_lock", false)
         } else {
             line(card)
             actionRow(card, "Change wallpaper", "Pick a system wallpaper — ALFA shows the same one", null) {
@@ -253,9 +260,76 @@ class SettingsActivity : Activity() {
         }
     }
 
+    /** Horizontal strip of wallpaper-style previews; tap one to apply it. */
+    private fun styleRow(card: LinearLayout) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), 0, dp(14))
+        }
+        box.addView(tv("Wallpaper style", 15f, white))
+        val strip = LinearLayout(this).apply { setPadding(0, 0, dp(16), 0) }
+        val hs = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(strip)
+        }
+        if (thumbsAccent != accent) { thumbs.values.forEach { it.recycle() }; thumbs.clear(); thumbsAccent = accent }
+        val current = WallpaperSync.style(this)
+        val (sw, sh) = WallpaperSync.screenSize(this)
+        val tw = dp(78)
+        val th = (tw * sh / sw.toFloat()).toInt()
+        val scale = tw / sw.toFloat()
+        HudBackground.STYLES.forEach { (id, label) ->
+            val on = id == current
+            val img = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) =
+                        outline.setRoundRect(0, 0, view.width, view.height, dp(12).toFloat())
+                }
+                clipToOutline = true
+                thumbs[id]?.let { setImageBitmap(it) }
+            }
+            val frame = FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(15).toFloat()
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(if (on) 3 else 1), if (on) accent else Color.argb(40, 255, 255, 255))
+                }
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+                addView(img, FrameLayout.LayoutParams(tw, th))
+                setOnClickListener {
+                    if (on) return@setOnClickListener
+                    tick(it)
+                    WallpaperSync.setStyle(this@SettingsActivity, id)
+                    bgView.style = id
+                    applyCarbonWallpaper(accent)
+                }
+            }
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(frame)
+                addView(tv(label, 11f, if (on) accent else dim, mono = true).apply { gravity = Gravity.CENTER }, lp(6))
+            }
+            strip.addView(col, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
+            // render missing previews off the main thread
+            if (thumbs[id] == null) {
+                val color = accent
+                io.execute {
+                    val bmp = try { WallpaperSync.render(this, color, id, scale) } catch (e: Exception) { null }
+                    main.post {
+                        if (bmp != null && !isDestroyed && color == accent) { thumbs[id] = bmp; img.setImageBitmap(bmp) }
+                    }
+                }
+            }
+        }
+        box.addView(hs, lp(12))
+        card.addView(box)
+    }
+
     /** Renders ALFA carbon in [color] and sets it as the real system wallpaper. */
     private fun applyCarbonWallpaper(color: Int) {
-        toast("Setting carbon wallpaper…")
+        toast("Setting wallpaper…")
         val lock = prefs.getBoolean("wall_lock", false)
         io.execute {
             val ok = try { WallpaperSync.applyCarbon(this, color, lock); true } catch (e: Exception) { false }
