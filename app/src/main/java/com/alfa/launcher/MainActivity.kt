@@ -368,7 +368,19 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        // (hiding the layout here made app-close animations blink; kept visible on purpose)
+        // invisible while in the background, so nothing is left to overlap when Recents fades out
+        hiddenForReturn = true
+        homeContent.animate().cancel()
+        homeContent.alpha = 0f
+        homeContent.scaleX = 0.97f
+        homeContent.scaleY = 0.97f
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Start fading in the moment Android starts showing ALFA, i.e. *together* with the
+        // system Recents fading out (a crossfade), instead of sitting fully drawn under it.
+        if (hiddenForReturn) homeContent.postOnAnimation { revealHome() }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -381,7 +393,7 @@ class MainActivity : Activity() {
         if (!hiddenForReturn) return
         hiddenForReturn = false
         homeContent.animate().alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(240).setInterpolator(DecelerateInterpolator(2f)).start()
+            .setDuration(220).setInterpolator(DecelerateInterpolator(1.6f)).start()
     }
 
     override fun onDestroy() {
