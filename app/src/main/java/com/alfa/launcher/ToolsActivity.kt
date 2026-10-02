@@ -524,6 +524,14 @@ class ToolsActivity : Activity() {
             },
             button("Copy", primary = false) { copy(out.text.toString()) },
         )
+        row(button("Open router page", primary = false) {
+            // the router's own admin page lists every connected device and its IP
+            val gw = gateway()
+            if (gw == null) toast("No gateway on this network")
+            else startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://$gw")))
+        }, top = 8)
+        add(tv("Your router's admin page (usually under “Connected devices” or “DHCP clients”) lists every device on your network with its IP.",
+            11f, dimmer), 8)
         out = output(networkReport())
     }
 
