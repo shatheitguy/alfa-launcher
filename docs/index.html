@@ -84,8 +84,8 @@ nav .gh:hover{border-color:var(--accent)}
 .s-gear{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:13px;color:var(--text2)}
 .s-clock{font-size:46px;font-weight:300;letter-spacing:-.02em;margin-top:10px;line-height:1}
 .s-date{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;color:var(--text2);margin-top:4px}
-.s-net{font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:8px;letter-spacing:.08em}
-.s-net::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px}
+.s-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+.s-sys{font-size:6.5px;line-height:1.55;letter-spacing:.08em;color:var(--text2);text-align:right;padding-bottom:2px}
 .s-orbit{flex:1;display:grid;place-items:center;min-height:0}
 .s-orbit svg{width:100%;max-height:100%}
 .s-pill{height:30px;border-radius:999px;border:1px solid var(--line);background:rgba(16,20,24,.55);display:flex;align-items:center;padding:0 12px;
@@ -243,9 +243,13 @@ footer a:hover{color:var(--text)}
         <div><div class="s-hi">GOOD EVENING</div><div class="s-name">Sha</div></div>
         <div class="s-gear">&#9881;</div>
       </div>
-      <div class="s-clock fade" id="clock">21:41</div>
-      <div class="s-date fade" id="date">WED · 01 OCT 2026</div>
-      <div class="s-net fade">WI-FI · 192.168.1.23 · TAP FOR NETWORK INFO</div>
+      <div class="s-row fade">
+        <div>
+          <div class="s-clock" id="clock">21:41</div>
+          <div class="s-date" id="date">WED · 01 OCT 2026</div>
+        </div>
+        <div class="s-sys mono">MOTOROLA EDGE 50<br>ANDROID 16 · API 36<br>UP 7d 08h 59m<br>RAM 64% · 5.1/8 GB<br>STO 23% · 54/256 GB</div>
+      </div>
       <div class="g-ui g-head"><span>All apps</span><i>CLOSE &#10005;</i></div>
       <div class="g-ui g-hint mono">CIRCLE = SPIN · SWIPE = PAGE · DRAG = 3D</div>
       <div class="s-orbit">
@@ -260,14 +264,6 @@ footer a:hover{color:var(--text)}
           <g id="homeLayer" class="layer">
             <circle cx="200" cy="200" r="188" fill="none" stroke="rgba(255,255,255,.18)"/>
             <g id="ticks"></g>
-            <path d="M 45.9 92.2 A 188 188 0 0 0 45.9 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
-            <path d="M 45.9 307.8 A 188 188 0 0 1 16 220" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
-            <path d="M 354.1 92.2 A 188 188 0 0 1 354.1 307.8" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5" stroke-linecap="round"/>
-            <path d="M 354.1 307.8 A 188 188 0 0 0 380 250" fill="none" stroke="#ff2d3d" stroke-width="5" stroke-linecap="round"/>
-            <text x="46" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">RAM</text>
-            <text x="46" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">52%</text>
-            <text x="354" y="196" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">STO</text>
-            <text x="354" y="212" fill="rgba(255,255,255,.7)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">34%</text>
             <g id="apps"></g>
             <circle id="dash" cx="200" cy="200" r="78" fill="none" stroke="rgba(255,45,61,.55)" stroke-width="1.5" stroke-dasharray="3 8"/>
             <circle cx="200" cy="200" r="70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="5"/>
@@ -294,7 +290,7 @@ footer a:hover{color:var(--text)}
           </g>
         </svg>
       </div>
-      <div class="s-pill fade"><b>&#8984; IT TOOLS</b> PING · NETWORK · PORTS <i>+7 &rsaquo;</i></div>
+      <div class="s-pill fade"><b>&#8984; IT TOOLS</b> SPEED · WI-FI · SSL <i>+12 &rsaquo;</i></div>
       <div class="s-pill fade">&#9906;&nbsp; Search apps <i>ALL APPS &#9678;</i></div>
       <div class="s-dock fade"><span></span><span></span><span></span><span></span></div>
     </div>
@@ -313,15 +309,15 @@ footer a:hover{color:var(--text)}
       <p>Everything is built around one idea: your apps in orbit, with system telemetry always in view.</p>
     </div>
     <div class="grid">
-      <div class="card"><div class="ico">&#9678;</div><h3>Orbit dial</h3><p>Eight favourite apps orbit a hub showing battery, with RAM and storage gauges on the ring. Drag around it to spin, and flick for momentum.</p></div>
+      <div class="card"><div class="ico">&#9678;</div><h3>Orbit dial</h3><p>Eight favourite apps orbit a battery hub. Drag around it to spin and flick for momentum. Device, uptime, RAM and storage sit beside the clock.</p></div>
       <div class="card"><div class="ico">&#11041;</div><h3>3D All Apps orbit</h3><p>Tap the centre: every app on three rings. Drag to spin and tilt in 3D, swipe for pages, pinch to zoom.</p></div>
-      <div class="card"><div class="ico">&#10022;</div><h3>Neon icons</h3><p>Every icon is redrawn as a glass orb with a glowing glyph in your accent colour, or as a colour orb. You can also keep the originals.</p></div>
+      <div class="card"><div class="ico">&#10022;</div><h3>Neon icons</h3><p>Every icon is redrawn as a glass orb with a glowing glyph in one of six accent colours, or as a colour orb. You can also keep the originals.</p></div>
       <div class="card"><div class="ico">&#9673;</div><h3>Your profile</h3><p>Your name, logo and a time-aware greeting right next to the clock.</p></div>
       <div class="card"><div class="ico">&#8984;</div><h3>IT Tools built in</h3><p>Fifteen tools one tap away from home: speed test, Wi-Fi signal, SSL checker, Wake-on-LAN, QR codes, ping, DNS and more.</p></div>
-      <div class="card"><div class="ico">&#9881;</div><h3>ALFA OS Settings</h3><p>One tidy settings screen for profile, appearance, motion, home layout, updates and system.</p></div>
-      <div class="card"><div class="ico">2</div><h3>Dual &amp; work apps</h3><p>Cloned apps (a second WhatsApp) and work-profile apps appear too, marked with a badge.</p></div>
-      <div class="card"><div class="ico">&#8635;</div><h3>Self-updating</h3><p>ALFA checks GitHub Releases, downloads the new build and installs it. You just confirm.</p></div>
-      <div class="card"><div class="ico">&#9673;</div><h3>Six accents</h3><p>Crimson, Ice blue, Mint, Amber, Violet or Mono. The whole OS, including icons, re-themes instantly.</p></div>
+      <div class="card"><div class="ico">&#9881;</div><h3>ALFA OS Settings</h3><p>One tidy screen: profile, appearance, orbit &amp; motion, home screen and system, with updates and about at the end.</p></div>
+      <div class="card"><div class="ico">2</div><h3>Dual &amp; work apps</h3><p>The apps you cloned (a second WhatsApp) and work-profile apps appear with a badge. System clutter from the clone profile stays hidden.</p></div>
+      <div class="card"><div class="ico">&#8635;</div><h3>Self-updating</h3><p>ALFA checks GitHub Releases, downloads the new build with a progress bar and installs it. You just confirm.</p></div>
+      <div class="card"><div class="ico">&#9680;</div><h3>One wallpaper</h3><p>Fluid glass, 3D depth or matte minimal styles in your accent, or your own photos, set as the real system wallpaper so home and Recents match.</p></div>
     </div>
   </div>
 </section>
