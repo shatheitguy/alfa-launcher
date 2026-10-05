@@ -27,9 +27,16 @@ class AssistantEngine(private val ctx: Context) {
     var lastUsed = 0L
         private set
 
-    fun configured(): Boolean = !prefs.getString("ai_server_url", "").isNullOrBlank()
+    /** "builtin" = ALFA's on-device llama-server, "server" = the user's own server on the network. */
+    val engine: String get() = prefs.getString("ai_engine", "builtin") ?: "builtin"
 
-    val modelName: String get() = prefs.getString("ai_server_model", "")?.trim().orEmpty().ifEmpty { "llama3.1" }
+    fun configured(): Boolean =
+        if (engine == "builtin") LocalLlm.supported(ctx) && LocalLlm.installed(ctx).isNotEmpty()
+        else !prefs.getString("ai_server_url", "").isNullOrBlank()
+
+    val modelName: String get() =
+        if (engine == "builtin") (LocalLlm.selected(ctx) ?: LocalLlm.installed(ctx).firstOrNull()?.name ?: "no model").removeSuffix(".gguf")
+        else prefs.getString("ai_server_model", "")?.trim().orEmpty().ifEmpty { "llama3.1" }
 
     companion object {
         /** "http://host:port" or ".../v1" -> ".../v1" */
@@ -85,8 +92,10 @@ class AssistantEngine(private val ctx: Context) {
     /** Blocking: one user turn, possibly several tool steps. Returns the reply text. */
     fun send(text: String, listener: Listener): String {
         lastUsed = System.currentTimeMillis()
-        val base = baseUrl(prefs.getString("ai_server_url", "")!!)
-        val key = prefs.getString("ai_server_key", "")?.trim().orEmpty()
+        val builtin = engine == "builtin"
+        if (builtin) LocalLlm.ensureRunning(ctx) { listener.onAction("Starting on-device AI (first reply takes longer)") }
+        val base = if (builtin) baseUrl(LocalLlm.BASE) else baseUrl(prefs.getString("ai_server_url", "")!!)
+        val key = if (builtin) "" else prefs.getString("ai_server_key", "")?.trim().orEmpty()
         history.put(JSONObject().put("role", "user").put("content", "$text\n\n(${timeNote()})"))
         repeat(8) {
             val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", systemPrompt()))
@@ -113,6 +122,7 @@ class AssistantEngine(private val ctx: Context) {
                     " (this model may not support tool calling; try llama3.1, qwen2.5 or mistral-nemo)" else ""
                 throw RuntimeException("Server returned HTTP $code$hint: ${txt.take(160)}")
             }
+            if (builtin) LocalLlm.touch()
             val msg = JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
             // some servers send content: null alongside tool calls; keep the turn as-is
             history.put(msg)
