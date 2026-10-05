@@ -112,7 +112,7 @@ class AssistantActivity : Activity() {
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { submit(); true } else false }
         }
         bar.addView(input, LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(round("🎙", false) { startVoice() })
+        bar.addView(micButton { startVoice() })
         sendBtn = round("↑", true) { submit() }
         bar.addView(sendBtn)
         input.addTextChangedListener(object : TextWatcher {
@@ -532,6 +532,22 @@ class AssistantActivity : Activity() {
             }
             setOnClickListener { onClick() }
         }
+
+    /** Mic in the chat's own style: line icon in the accent colour on a soft accent ring (the emoji looked out of place). */
+    private fun micButton(onClick: () -> Unit) = ImageView(this).apply {
+        setImageResource(R.drawable.ic_mic)
+        imageTintList = android.content.res.ColorStateList.valueOf(accent)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(40, Color.red(accent), Color.green(accent), Color.blue(accent)))
+            setStroke(dp(1), Color.argb(90, Color.red(accent), Color.green(accent), Color.blue(accent)))
+        }
+        contentDescription = "Speak to ALFA"
+        layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) }
+        setOnClickListener { onClick() }
+    }
 
     private fun round(glyph: String, primary: Boolean, onClick: () -> Unit) =
         tv(glyph, 18f, if (primary) Color.BLACK else white).apply {

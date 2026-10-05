@@ -35,6 +35,34 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
     private var woke = false
     private val restart = Runnable { if (mode == Mode.HOTWORD) beginHotword() }
 
+    // Command start-up: the recognizer is often still busy for a moment after the wake-word
+    // session is cancelled, and some phones' on-device recognizer rejects free-form commands.
+    // Both used to end in "I didn't catch that"; now they retry, then fall back to the standard
+    // recognizer.
+    private var cmdTries = 0
+    private var cmdStartedAt = 0L
+    private var heard = false
+    private var forceStandard = false
+    private val startCommand = Runnable {
+        if (mode != Mode.COMMAND) return@Runnable
+        heard = false
+        cmdStartedAt = System.currentTimeMillis()
+        try { recognizer().startListening(intent()) } catch (e: Exception) { retryCommand(true) }
+    }
+
+    private fun retryCommand(recreate: Boolean) {
+        if (mode != Mode.COMMAND) return
+        cmdTries++
+        if (recreate || cmdTries >= 2) {
+            // a fresh recognizer clears a stuck session; after a failure prefer the standard one
+            try { sr?.destroy() } catch (e: Exception) {}
+            sr = null
+            if (onDevice) forceStandard = true
+        }
+        main.removeCallbacks(startCommand)
+        main.postDelayed(startCommand, 300L * cmdTries)
+    }
+
     companion object {
         private val WAKE = Regex("\\b(hey |ok |okay )?(alfa|alpha|alpa|alfah|elfa|alva)\\b[,.!?\\s]*", RegexOption.IGNORE_CASE)
 
@@ -47,7 +75,7 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
 
     private fun recognizer(): SpeechRecognizer {
         sr?.let { return it }
-        val r = if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)) {
+        val r = if (!forceStandard && Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)) {
             onDevice = true
             SpeechRecognizer.createOnDeviceSpeechRecognizer(ctx)
         } else {
@@ -70,6 +98,12 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
 
     fun startHotword() {
         if (mode == Mode.HOTWORD) return
+        if (forceStandard) {
+            // the fallback was only for that command; the always-on loop goes back to the silent on-device recognizer
+            forceStandard = false
+            try { sr?.destroy() } catch (e: Exception) {}
+            sr = null
+        }
         mode = Mode.HOTWORD
         main.removeCallbacks(restart)
         main.postDelayed(restart, 120)
@@ -85,17 +119,18 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
     /** [fresh] = the previous session already ended, so start right away without cancelling. */
     fun listenCommand(fresh: Boolean = false) {
         main.removeCallbacks(restart)
+        main.removeCallbacks(startCommand)
         mode = Mode.COMMAND
         woke = true
+        cmdTries = 0
         if (!fresh) try { recognizer().cancel() } catch (e: Exception) {}
-        main.postDelayed({
-            if (mode == Mode.COMMAND) try { recognizer().startListening(intent()) } catch (e: Exception) { cb.onNoCommand() }
-        }, if (fresh) 0L else 80L)
+        main.postDelayed(startCommand, if (fresh) 0L else 150L)
     }
 
     fun stop() {
         mode = Mode.OFF
         main.removeCallbacks(restart)
+        main.removeCallbacks(startCommand)
         try { sr?.cancel() } catch (e: Exception) {}
     }
 
@@ -115,7 +150,7 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {}
-        override fun onBeginningOfSpeech() {}
+        override fun onBeginningOfSpeech() { heard = true }
         override fun onRmsChanged(rmsdB: Float) { if (woke) cb.onLevel(rmsdB) }
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
@@ -165,7 +200,16 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
                     }
                     main.postDelayed(restart, delay)
                 }
-                Mode.COMMAND -> cb.onNoCommand()
+                Mode.COMMAND -> {
+                    // Errors before the user even started talking are start-up failures, not silence.
+                    val startup = !heard && System.currentTimeMillis() - cmdStartedAt < 2500
+                    val retryable = error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT ||
+                        error == SpeechRecognizer.ERROR_SERVER || error == 11 /* server disconnected */ ||
+                        error == 12 /* language not supported */ || error == 13 /* language unavailable */ ||
+                        (error == SpeechRecognizer.ERROR_NO_MATCH && System.currentTimeMillis() - cmdStartedAt < 700)
+                    if (startup && retryable && cmdTries < 3) retryCommand(error >= 11 || error == SpeechRecognizer.ERROR_SERVER)
+                    else cb.onNoCommand()
+                }
                 Mode.OFF -> {}
             }
         }
