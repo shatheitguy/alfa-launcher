@@ -249,8 +249,145 @@ object AssistantTools {
                 wake(c, a.getString("name"))
             },
             makeQr,
-        )
+        ) + appActions
     }
+
+    // ---------------- acting inside apps (prefilled; the user taps Send) ----------------
+    // Android doesn't let one app press buttons in another (short of Accessibility control),
+    // so these open the right chat / screen with everything filled in.
+
+    /** Set when an action needed the Contacts permission; the UI asks for it. */
+    @Volatile var needsContacts = false
+
+    private fun hasContacts(c: Context) =
+        c.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private val CALLING_CODES = mapOf(
+        "ae" to "971", "in" to "91", "us" to "1", "ca" to "1", "gb" to "44", "sa" to "966", "pk" to "92", "bd" to "880",
+        "lk" to "94", "ph" to "63", "eg" to "20", "qa" to "974", "kw" to "965", "om" to "968", "bh" to "973", "jo" to "962",
+        "au" to "61", "de" to "49", "fr" to "33", "it" to "39", "es" to "34", "np" to "977", "my" to "60", "sg" to "65", "id" to "62",
+    )
+
+    /** Digits with country code, no "+" (WhatsApp format). */
+    private fun intlDigits(c: Context, number: String): String {
+        val trimmed = number.trim()
+        var d = trimmed.filter { it.isDigit() }
+        if (trimmed.startsWith("+")) return d
+        if (d.startsWith("00")) return d.drop(2)
+        if (d.startsWith("0")) {
+            val iso = (c.getSystemService(android.telephony.TelephonyManager::class.java)?.simCountryIso ?: "")
+                .ifEmpty { Locale.getDefault().country }.lowercase(Locale.ROOT)
+            CALLING_CODES[iso]?.let { d = it + d.drop(1) }
+        }
+        return d
+    }
+
+    private class Person(val name: String, val number: String)
+
+    /** A phone number, or a contact name looked up in the address book. */
+    private fun person(c: Context, who: String): Person? {
+        val w = who.trim()
+        if (w.count { it.isDigit() } >= 6 && w.all { it.isDigit() || it in "+ -()" }) return Person(w, w)
+        if (!hasContacts(c)) { needsContacts = true; return null }
+        val uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+        val proj = arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+        val found = ArrayList<Person>()
+        c.contentResolver.query(uri, proj, "${android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+            arrayOf("%$w%"), null)?.use { cur ->
+            while (cur.moveToNext() && found.size < 20) found.add(Person(cur.getString(0) ?: "", cur.getString(1) ?: ""))
+        }
+        val lw = w.lowercase(Locale.ROOT)
+        return found.firstOrNull { it.name.lowercase(Locale.ROOT) == lw }
+            ?: found.firstOrNull { it.name.lowercase(Locale.ROOT).startsWith(lw) }
+            ?: found.firstOrNull()
+    }
+
+    private fun noContact(who: String) =
+        if (needsContacts) "I need permission to read contacts to find \"$who\". The app is asking the user now; try again after they allow it."
+        else "No contact matching \"$who\". Ask the user for the exact name or the phone number."
+
+    private fun installed(c: Context, pkg: String) = try { c.packageManager.getPackageInfo(pkg, 0); true } catch (e: Exception) { false }
+
+    private val appActions: List<ToolSpec> = listOf(
+        ToolSpec("whatsapp_message", "Open a WhatsApp chat with a contact (name or number) with the message typed in. The user taps Send.",
+            props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
+            val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
+            val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { installed(c, it) }
+                ?: return@ToolSpec "WhatsApp isn't installed."
+            val url = "https://api.whatsapp.com/send?phone=${intlDigits(c, p.number)}&text=${Uri.encode(a.getString("message"))}"
+            val r = start(c, Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg))
+            if (r == "ok") "Opened WhatsApp with ${p.name} and the message ready. They need to tap Send." else r
+        },
+        ToolSpec("sms_message", "Open the SMS app to a contact with the text typed in. The user taps Send.",
+            props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
+            val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
+            val r = start(c, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(p.number))).putExtra("sms_body", a.getString("message")))
+            if (r == "ok") "Opened a text to ${p.name} with the message ready. They need to tap Send." else r
+        },
+        ToolSpec("call_contact", "Open the phone dialer with a contact's number ready. The user taps Call.",
+            props("who" to str("Contact name or phone number")), listOf("who")) { c, a ->
+            val p = person(c, a.getString("who")) ?: return@ToolSpec noContact(a.getString("who"))
+            val r = start(c, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(p.number))))
+            if (r == "ok") "Dialer open with ${p.name} (${p.number}). Tap Call." else r
+        },
+        ToolSpec("send_email", "Open the email app with recipient, subject and body filled in. The user taps Send.",
+            props("to" to str("Email address"), "subject" to str("Subject"), "body" to str("Message body")), listOf("to")) { c, a ->
+            val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + a.getString("to")))
+                .putExtra(Intent.EXTRA_SUBJECT, a.optString("subject")).putExtra(Intent.EXTRA_TEXT, a.optString("body"))
+            val r = start(c, i)
+            if (r == "ok") "Email to ${a.getString("to")} is ready. Tap Send." else r
+        },
+        ToolSpec("share_text", "Share text into another app (Telegram, Slack, Teams, Messenger, Notes, ...) or the share sheet.",
+            props("text" to str("Text to share"), "app" to str("Optional app name, e.g. telegram")), listOf("text")) { c, a ->
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, a.getString("text"))
+            val appName = a.optString("app").trim()
+            if (appName.isNotEmpty()) {
+                val app = findApp(c, appName)
+                if (app != null && !app.clone) {
+                    send.setPackage(app.pkg)
+                    if (start(c, send) == "ok") return@ToolSpec "Opened ${app.label} with the text ready to send."
+                }
+            }
+            start(c, Intent.createChooser(send, "Share"))
+            "Share sheet opened; the user picks where to send it."
+        },
+        ToolSpec("navigate_to", "Start navigation (Google Maps) to a place or address.",
+            props("place" to str("Destination")), listOf("place")) { c, a ->
+            val q = Uri.encode(a.getString("place"))
+            val r = start(c, Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$q")))
+            if (r == "ok") "Navigating to ${a.getString("place")}." else start(c, Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$q"))).let { "Opened maps for ${a.getString("place")}." }
+        },
+        ToolSpec("play_music", "Play a song, artist or album in the music app.",
+            props("query" to str("Song, artist or album")), listOf("query")) { c, a ->
+            val i = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                .putExtra(android.app.SearchManager.QUERY, a.getString("query"))
+            val r = start(c, i)
+            if (r == "ok") "Playing ${a.getString("query")}." else "No music app here can play from search."
+        },
+        ToolSpec("add_calendar_event", "Open a new calendar event filled in. start is local time 'YYYY-MM-DD HH:MM'.",
+            props("title" to str("Event title"), "start" to str("YYYY-MM-DD HH:MM"), "minutes" to int("Length in minutes, default 60"),
+                "location" to str("Optional location")), listOf("title", "start")) { c, a ->
+            val t0 = try { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).parse(a.getString("start"))?.time } catch (e: Exception) { null }
+                ?: return@ToolSpec "Couldn't read the start time; use YYYY-MM-DD HH:MM."
+            val dur = (if (a.has("minutes")) a.optInt("minutes") else 60).coerceAtLeast(5)
+            val i = Intent(Intent.ACTION_INSERT).setData(android.provider.CalendarContract.Events.CONTENT_URI)
+                .putExtra(android.provider.CalendarContract.Events.TITLE, a.getString("title"))
+                .putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, t0)
+                .putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, t0 + dur * 60_000L)
+                .putExtra(android.provider.CalendarContract.Events.EVENT_LOCATION, a.optString("location"))
+            val r = start(c, i)
+            if (r == "ok") "New event \"${a.getString("title")}\" is filled in. Tap Save." else r
+        },
+        ToolSpec("open_url", "Open a website or link in the browser.", props("url" to str("Web address")), listOf("url")) { c, a ->
+            var u = a.getString("url").trim()
+            if (!u.contains("://")) u = "https://$u"
+            start(c, Intent(Intent.ACTION_VIEW, Uri.parse(u))); "Opened $u."
+        },
+        ToolSpec("open_camera", "Open the camera to take a photo or selfie.", props(), emptyList()) { c, _ ->
+            start(c, Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)); "Camera open."
+        },
+    )
 
     fun byName(name: String) = all.firstOrNull { it.name == name }
 
@@ -279,6 +416,16 @@ object AssistantTools {
         "dns_lookup" to listOf("dns", "resolve", "nslookup", "a record"),
         "ssl_check" to listOf("ssl", "certificate", "cert", "tls", "https"),
         "wake_device" to listOf("wake", "wol", "magic packet", "boot my", "turn on my pc", "power on"),
+        "whatsapp_message" to listOf("whatsapp", "whats app", "wa "),
+        "sms_message" to listOf("sms", "text ", "message ", "msg "),
+        "call_contact" to listOf("call ", "call", "dial", "ring ", "phone "),
+        "send_email" to listOf("email", "e-mail", "mail "),
+        "share_text" to listOf("share", "send to", "post to"),
+        "navigate_to" to listOf("navigate", "directions", "route", "drive to", "maps", "how do i get to"),
+        "play_music" to listOf("play ", "music", "song", "spotify", "album"),
+        "add_calendar_event" to listOf("calendar", "event", "meeting", "appointment", "schedule"),
+        "open_url" to listOf("http", "www.", ".com", ".org", ".net", ".io", ".ae", ".in", "website", "link"),
+        "open_camera" to listOf("camera", "photo", "picture", "selfie"),
         "make_qr" to listOf("qr", "barcode", "scan code", "share wifi", "share wi-fi", "share the wifi"),
     )
 

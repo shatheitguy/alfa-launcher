@@ -193,6 +193,11 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
             val qr = AssistantTools.takeQr()
             main.post {
                 if (!isOpen) return@post
+                if (AssistantTools.needsContacts) {
+                    AssistantTools.needsContacts = false
+                    @Suppress("DEPRECATION")
+                    act.requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 83)
+                }
                 if (qr != null) {
                     qrImg.setImageBitmap(qr.bitmap); qrImg.visibility = VISIBLE
                     qrImg.alpha = 0f; qrImg.animate().alpha(1f).setDuration(300).start()
