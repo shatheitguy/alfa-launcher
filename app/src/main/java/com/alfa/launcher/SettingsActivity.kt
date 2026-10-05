@@ -46,6 +46,8 @@ open class SettingsActivity : Activity() {
         private const val REQ_LOGO = 51
         private const val REQ_PHOTOS = 53
         private const val REQ_MIC = 54
+        private const val REQ_CONTACTS = 55
+        private const val REQ_SMS = 56
     }
 
     private val prefs by lazy { getSharedPreferences("alfa", MODE_PRIVATE) }
@@ -565,6 +567,14 @@ open class SettingsActivity : Activity() {
         actionRow(card, "Edit memory", if (facts.isEmpty()) "Nothing saved yet" else "${facts.size} saved · one fact per line", null) {
             editMemory()
         }
+
+        // Permissions the Assistant's actions rely on, with a working "Allow" even after a denial.
+        val perms = section("ASSISTANT PERMISSIONS", "⚿")
+        permRow(perms, "Contacts", "Find people by name for messages and calls", android.Manifest.permission.READ_CONTACTS, REQ_CONTACTS)
+        line(perms)
+        permRow(perms, "SMS", "Send a text after you tap Send in the chat", android.Manifest.permission.SEND_SMS, REQ_SMS)
+        line(perms)
+        permRow(perms, "Microphone", "Voice chat and the “ALFA” wake word", android.Manifest.permission.RECORD_AUDIO, REQ_MIC)
         line(card)
         toggleRow(card, "Wake word \u201CALFA\u201D", "Say \u201CALFA\u201D while the home screen is showing. Uses the microphone on-device while on.",
             "wake_word", false) { on ->
@@ -719,8 +729,8 @@ open class SettingsActivity : Activity() {
         if (requestCode == REQ_MIC && grantResults.none { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
             prefs.edit().putBoolean("wake_word", false).apply()
             toast("ALFA needs microphone access to hear \u201CALFA\u201D")
-            build()
         }
+        build() // refresh the permission rows
     }
 
     private fun testServer() {
@@ -762,6 +772,13 @@ open class SettingsActivity : Activity() {
                     .setNeutralButton("Type name") { _, _ -> manual() }
                     .show()
             }
+        }
+    }
+
+    private fun permRow(card: LinearLayout, title: String, sub: String, perm: String, req: Int) {
+        val ok = Perms.granted(this, perm)
+        actionRow(card, title, (if (ok) "Allowed ✓ · " else "Not allowed · ") + sub, if (ok) null else "Allow") {
+            if (ok) Perms.openAppSettings(this) else Perms.request(this, perm, req, title)
         }
     }
 
