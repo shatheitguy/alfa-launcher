@@ -248,10 +248,95 @@ object AssistantTools {
                 props("name" to str("Saved device name")), listOf("name")) { c, a ->
                 wake(c, a.getString("name"))
             },
+            makeQr,
         )
     }
 
     fun byName(name: String) = all.firstOrNull { it.name == name }
+
+    // ---------------- picking the right tools ----------------
+    // Small on-device models choose badly from a long tool list. Each action has trigger words;
+    // the model is only offered actions whose words appear in the request (plus app opening),
+    // and an action whose words are absent is refused, so "make a QR" can never set a timer.
+
+    private val KEYWORDS: Map<String, List<String>> = mapOf(
+        "open_app" to listOf("open", "launch", "start ", "run ", "go to", "show me", "take me to"),
+        "find_apps" to listOf(" app", "apps", "installed"),
+        "set_accent" to listOf("accent", "colour", "color", "theme", "crimson", "red", "blue", "ice", "mint", "green", "amber", "orange", "violet", "purple", "mono", "white"),
+        "set_wallpaper" to listOf("wallpaper", "background") + HudBackground.STYLES.map { it.first },
+        "set_icon_style" to listOf("icon"),
+        "set_setting" to listOf("vibrat", "haptic", "spin", "tilt", "3d", "drift", "tools button", "it tools button", "clone", "dual", "auto-check", "auto check", "auto update", "turn on", "turn off", "enable", "disable", "switch on", "switch off"),
+        "edit_home" to listOf("orbit", "dock", "home screen", "pin", "unpin"),
+        "open_it_tool" to listOf("tool", "speed", "speedtest", "port", "subnet", "hash", "base64", "password", "wake-on-lan", "wifi details", "wi-fi details", "update", "device info", "panels"),
+        "open_settings_panel" to listOf("setting", "wifi", "wi-fi", "bluetooth", "display", "brightness", "battery saver", "storage", "developer", "location", "vpn", "sound", "about phone", "mobile data", "apps list"),
+        "open_alfa_settings" to listOf("alfa setting", "launcher setting", "alfa os setting"),
+        "set_timer" to listOf("timer", "countdown", "count down"),
+        "set_alarm" to listOf("alarm", "wake me"),
+        "web_search" to listOf("search", "google", "look up", "lookup online", "find online"),
+        "device_status" to listOf("battery", "ram", "memory", "storage", "status", "uptime", "temperature", "temp", "how is my phone", "phone health"),
+        "network_info" to listOf("ip", "network", "gateway", "dns server", "connection", "connected", "subnet mask"),
+        "ping" to listOf("ping", "latency", "reachable", "online?", "is up", "is down"),
+        "dns_lookup" to listOf("dns", "resolve", "nslookup", "a record"),
+        "ssl_check" to listOf("ssl", "certificate", "cert", "tls", "https"),
+        "wake_device" to listOf("wake", "wol", "magic packet", "boot my", "turn on my pc", "power on"),
+        "make_qr" to listOf("qr", "barcode", "scan code", "share wifi", "share wi-fi", "share the wifi"),
+    )
+
+    fun matches(name: String, text: String): Boolean {
+        val words = KEYWORDS[name] ?: return true
+        val t = " " + text.lowercase(Locale.ROOT) + " "
+        return words.any { t.contains(it) }
+    }
+
+    /**
+     * The tools worth offering for this request. When nothing matches (a question, small talk)
+     * the list is empty and the model simply answers in conversation.
+     */
+    fun relevant(text: String): List<ToolSpec> = all.filter { matches(it.name, text) }
+
+    // ---------------- QR shown in the chat ----------------
+
+    class Qr(val bitmap: android.graphics.Bitmap, val caption: String, val name: String)
+
+    @Volatile private var pendingQr: Qr? = null
+
+    /** The QR code made during the last request, if any (consumed once). */
+    fun takeQr(): Qr? = pendingQr.also { pendingQr = null }
+
+    private val makeQr = ToolSpec("make_qr",
+        "Create a QR code and show it to the user. type 'wifi' = scan-to-join Wi-Fi (needs ssid, password, security), " +
+            "'link' = a web address (content), 'text' = any text (content).",
+        props(
+            "type" to str("Kind of QR code", listOf("wifi", "link", "text")),
+            "content" to str("The link or text (for type link/text)"),
+            "ssid" to str("Wi-Fi network name (type wifi)"),
+            "password" to str("Wi-Fi password (type wifi; empty for an open network)"),
+            "security" to str("Wi-Fi security (type wifi)", listOf("WPA", "WEP", "open")),
+        ), listOf("type")) { _, a ->
+        val type = a.getString("type").lowercase(Locale.ROOT)
+        val (payload, caption, name) = when (type) {
+            "wifi" -> {
+                val ssid = a.optString("ssid").trim()
+                if (ssid.isEmpty()) return@ToolSpec "Ask the user for the Wi-Fi network name (and password) first."
+                val pass = a.optString("password")
+                val sec = if (pass.isEmpty()) "open" else a.optString("security", "WPA")
+                Triple(QrUtil.wifi(ssid, pass, sec), "Scan to join “$ssid”", "wifi-$ssid")
+            }
+            "link" -> {
+                var u = a.optString("content").trim()
+                if (u.isEmpty()) return@ToolSpec "Ask the user which link to encode."
+                if (!u.contains("://")) u = "https://$u"
+                Triple(u, u, "link-qr")
+            }
+            else -> {
+                val t = a.optString("content").trim()
+                if (t.isEmpty()) return@ToolSpec "Ask the user what text to encode."
+                Triple(t, if (t.length > 50) t.take(50) + "…" else t, "text-qr")
+            }
+        }
+        pendingQr = Qr(QrUtil.render(payload), caption, name.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+        "QR code created and shown on screen ($caption). The user can save or share it."
+    }
 
     // ---------------- implementations ----------------
 

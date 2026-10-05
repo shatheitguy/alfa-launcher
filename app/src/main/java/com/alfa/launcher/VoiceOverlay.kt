@@ -43,6 +43,11 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
     private val transcript = text(22f, 1f, font = "sans-serif-light")
     private val chips = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
     private val reply = text(16f, 0.9f)
+    private val qrImg = android.widget.ImageView(act).apply {
+        visibility = GONE
+        background = GradientDrawable().apply { cornerRadius = 14 * resources.displayMetrics.density; setColor(Color.WHITE) }
+        val p = (8 * resources.displayMetrics.density).toInt(); setPadding(p, p, p, p)
+    }
     private val hint = text(10f, 0.45f, mono = true).apply { letterSpacing = 0.18f }
 
     var isOpen = false
@@ -83,6 +88,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         col.addView(transcript, lp(14))
         col.addView(chips, lp(14))
         col.addView(reply, lp(12))
+        col.addView(qrImg, LinearLayout.LayoutParams(dp(200), dp(200)).apply { topMargin = dp(14); gravity = Gravity.CENTER_HORIZONTAL })
         col.addView(View(act), LinearLayout.LayoutParams(1, 0, 1f))
         col.addView(hint, lp(0))
         addView(col, LayoutParams(-1, -1))
@@ -126,6 +132,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         status.setTextColor(accent)
         transcript.text = ""
         reply.text = ""
+        qrImg.visibility = GONE
         chips.removeAllViews()
         visibility = VISIBLE
         alpha = 0f
@@ -134,6 +141,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         orb.animate().scaleX(1f).scaleY(1f).setDuration(520).setInterpolator(DecelerateInterpolator(2.4f)).start()
         if (prefs.getBoolean("haptics", true)) performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         if (System.currentTimeMillis() - engine.lastUsed > 5 * 60_000L) engine.reset()   // fresh context after a while
+        warmTts()   // so the reply can be spoken without a start-up pause
     }
 
     private fun listening() {
@@ -182,22 +190,34 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
             } catch (e: Exception) {
                 "Something went wrong: ${e.message ?: e.javaClass.simpleName}"
             }
-            main.post { if (isOpen) finish(answer) }
+            val qr = AssistantTools.takeQr()
+            main.post {
+                if (!isOpen) return@post
+                if (qr != null) {
+                    qrImg.setImageBitmap(qr.bitmap); qrImg.visibility = VISIBLE
+                    qrImg.alpha = 0f; qrImg.animate().alpha(1f).setDuration(300).start()
+                }
+                finish(answer, if (qr != null) 9000L else null)
+            }
         }
     }
 
-    private fun finish(answer: String) {
+    private fun finish(answer: String, hold: Long? = null) {
+        holdMs = hold
         reply.text = answer
         reply.alpha = 0f
         reply.animate().alpha(1f).setDuration(260).start()
-        if (prefs.getBoolean("ai_speak", true)) speak(answer) else done(2600)
+        if (prefs.getBoolean("ai_speak", true)) speak(answer) else done(holdMs ?: 2600)
     }
+
+    private var holdMs: Long? = null
 
     private fun done(delay: Long) {
         orb.state = VoiceOrbView.State.IDLE
         status.text = "DONE"
         busy = false
-        main.postDelayed({ if (isOpen && !busy) close() }, delay)
+        // keep a QR code on screen long enough to scan it
+        main.postDelayed({ if (isOpen && !busy) close() }, holdMs?.coerceAtLeast(delay) ?: delay)
     }
 
     private fun chip(label: String) {
@@ -218,6 +238,12 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
     }
 
     // ---------------- text to speech ----------------
+
+    private fun warmTts() {
+        if (tts == null && prefs.getBoolean("ai_speak", true)) {
+            tts = TextToSpeech(act) { st -> ttsReady = st == TextToSpeech.SUCCESS; if (ttsReady) tts?.language = Locale.getDefault() }
+        }
+    }
 
     private fun speak(textToSay: String) {
         orb.state = VoiceOrbView.State.SPEAKING
