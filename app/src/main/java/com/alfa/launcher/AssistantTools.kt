@@ -296,18 +296,42 @@ object AssistantTools {
         val w = who.trim()
         if (w.count { it.isDigit() } >= 6 && w.all { it.isDigit() || it in "+ -()" }) return Person(w, w)
         if (!hasContacts(c)) { needsContacts = true; return null }
+
+        // Match on any word of the query, so "Ahmed" finds "Mohammed Ahmed" and
+        // "John S" finds "John Smith". Query all contacts once, rank in code.
+        val words = w.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.length >= 2 }
         val uri = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI
         val proj = arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
             android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-        val found = ArrayList<Person>()
-        c.contentResolver.query(uri, proj, "${android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
-            arrayOf("%$w%"), null)?.use { cur ->
-            while (cur.moveToNext() && found.size < 20) found.add(Person(cur.getString(0) ?: "", cur.getString(1) ?: ""))
-        }
+        val all = ArrayList<Person>()
+        try {
+            c.contentResolver.query(uri, proj, null, null,
+                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC")?.use { cur ->
+                while (cur.moveToNext()) {
+                    val name = cur.getString(0) ?: continue
+                    val num = cur.getString(1) ?: continue
+                    if (num.isNotBlank()) all.add(Person(name, num))
+                }
+            }
+        } catch (e: Exception) { return null }
+        if (all.isEmpty()) return null
+
         val lw = w.lowercase(Locale.ROOT)
-        return found.firstOrNull { it.name.lowercase(Locale.ROOT) == lw }
-            ?: found.firstOrNull { it.name.lowercase(Locale.ROOT).startsWith(lw) }
-            ?: found.firstOrNull()
+        fun score(p: Person): Int {
+            val n = p.name.lowercase(Locale.ROOT)
+            val tokens = n.split(Regex("\\s+"))
+            return when {
+                n == lw -> 100
+                tokens.any { it == lw } -> 90
+                n.startsWith(lw) -> 80
+                tokens.any { t -> words.any { t == it } } -> 70   // a whole name word matches
+                n.contains(lw) -> 60
+                words.isNotEmpty() && words.all { word -> n.contains(word) } -> 50
+                words.any { word -> n.contains(word) } -> 30
+                else -> 0
+            }
+        }
+        return all.map { it to score(it) }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
     }
 
     private fun noContact(who: String) =
@@ -324,9 +348,16 @@ object AssistantTools {
             val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
             val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { installed(c, it) }
                 ?: return@ToolSpec "WhatsApp isn't installed."
-            val url = "https://api.whatsapp.com/send?phone=${intlDigits(c, p.number)}&text=${Uri.encode(a.getString("message"))}"
-            val r = start(c, Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg))
-            if (r == "ok") "Opened WhatsApp with ${p.name} and the message ready. They need to tap Send." else r
+            val digits = intlDigits(c, p.number)
+            val text = Uri.encode(a.getString("message"))
+            // Try wa.me (most reliable), then the api.whatsapp.com form, both pinned to the WhatsApp app.
+            val urls = listOf("https://wa.me/$digits?text=$text", "https://api.whatsapp.com/send?phone=$digits&text=$text")
+            var opened = false
+            for (u in urls) {
+                if (start(c, Intent(Intent.ACTION_VIEW, Uri.parse(u)).setPackage(pkg)) == "ok") { opened = true; break }
+            }
+            if (opened) "Opened WhatsApp with ${p.name} and the message ready. They need to tap Send."
+            else "Couldn't open WhatsApp for ${p.name}. Their number may not be on WhatsApp."
         },
         ToolSpec("sms_message", "Prepare a text message (SMS) to a contact. It appears in the chat and is sent when the user taps Send.",
             props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
