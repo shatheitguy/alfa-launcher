@@ -32,6 +32,8 @@ class AssistantActivity : Activity() {
 
     companion object {
         private const val REQ_VOICE = 81
+        private const val REQ_CONTACTS = 82
+        private const val REQ_SMS = 83
         const val EXTRA_VOICE = "voice"
     }
 
@@ -283,6 +285,7 @@ class AssistantActivity : Activity() {
                 e.message ?: "Something went wrong (${e.javaClass.simpleName})."
             }
             val qr = AssistantTools.takeQr()
+            val sms = AssistantTools.takeSms()
             main.post {
                 if (isDestroyed) return@post
                 turn.body.removeView(dots)
@@ -291,6 +294,7 @@ class AssistantActivity : Activity() {
                 turn.text.visibility = View.VISIBLE
                 glide(turn.text)
                 if (qr != null) addQr(turn, qr)
+                if (sms != null) addSms(turn, sms)
                 askContactsIfNeeded()
                 busy = false
                 sendBtn.alpha = if (input.text.isNullOrBlank()) 0.35f else 1f
@@ -300,19 +304,31 @@ class AssistantActivity : Activity() {
         }
     }
 
-    /** An action needed contacts to find someone: ask once, then the user can repeat the request. */
-    @Suppress("DEPRECATION")
+    /**
+     * An action needed contacts to find someone: ask for the permission (or, if Android no longer
+     * shows the prompt, open ALFA's permission page), then the user can repeat the request.
+     */
     private fun askContactsIfNeeded() {
         if (!AssistantTools.needsContacts) return
         AssistantTools.needsContacts = false
-        requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 82)
+        Perms.request(this, android.Manifest.permission.READ_CONTACTS, REQ_CONTACTS, "Contacts")
     }
+
+    /** A text waiting for the SMS permission before it can be sent. */
+    private var smsWaiting: Pair<AssistantTools.Sms, TextView>? = null
 
     @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 82 && grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-            toast("Contacts allowed — ask again and I'll find them")
+        val ok = grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }
+        when (requestCode) {
+            REQ_CONTACTS -> if (ok) toast("Contacts allowed — ask again and I'll find them")
+            REQ_SMS -> {
+                val w = smsWaiting
+                smsWaiting = null
+                if (ok && w != null) doSendSms(w.first, w.second)
+                else if (!ok) toast("ALFA needs the SMS permission to send texts — or use Open in Messages")
+            }
         }
     }
 
@@ -439,6 +455,52 @@ class AssistantActivity : Activity() {
         turn.body.addView(card, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
         glide(card)
         scrollDown()
+    }
+
+    /** The prepared text, shown for the user to check; nothing is sent until they tap Send. */
+    private fun addSms(turn: Turn, sms: AssistantTools.Sms) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(12))
+            background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(Color.argb(200, 20, 20, 26)); setStroke(dp(1), Color.argb(40, 255, 255, 255)) }
+        }
+        card.addView(tv("SMS TO ${sms.name.uppercase(Locale.getDefault())}", 11f, accent, mono = true).apply { letterSpacing = 0.12f })
+        card.addView(tv(sms.number, 12f, dim, mono = true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
+        card.addView(tv(sms.text, 15f, white).apply { setTextIsSelectable(true); setLineSpacing(dp(2).toFloat(), 1f) },
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        val state = tv("", 12f, dim)
+        val btns = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val sendPill = pill("Send", true) {
+            if (Perms.granted(this, android.Manifest.permission.SEND_SMS)) doSendSms(sms, state)
+            else {
+                smsWaiting = sms to state
+                Perms.request(this, android.Manifest.permission.SEND_SMS, REQ_SMS, "SMS")
+            }
+        }
+        btns.addView(sendPill)
+        btns.addView(pill("Open in Messages", false) {
+            if (AssistantTools.openSmsApp(this, sms) != "ok") toast("No messaging app found")
+        }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        card.addView(btns, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
+        card.addView(state, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        state.tag = sendPill
+        turn.body.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        glide(card)
+        scrollDown()
+    }
+
+    private fun doSendSms(sms: AssistantTools.Sms, state: TextView) {
+        val btn = state.tag as? TextView
+        try {
+            AssistantTools.sendSms(this, sms)
+            state.text = "✓ Sent to ${sms.name}"
+            state.setTextColor(accent)
+            btn?.isEnabled = false
+            btn?.alpha = 0.4f
+        } catch (e: Exception) {
+            state.text = "Couldn't send: ${e.message ?: e.javaClass.simpleName}. Try Open in Messages."
+            state.setTextColor(Color.rgb(255, 120, 120))
+        }
     }
 
     // ---------------- helpers ----------------

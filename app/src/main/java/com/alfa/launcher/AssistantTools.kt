@@ -328,13 +328,13 @@ object AssistantTools {
             val r = start(c, Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg))
             if (r == "ok") "Opened WhatsApp with ${p.name} and the message ready. They need to tap Send." else r
         },
-        ToolSpec("sms_message", "Open the SMS app to a contact with the text typed in. The user taps Send.",
+        ToolSpec("sms_message", "Prepare a text message (SMS) to a contact. It appears in the chat and is sent when the user taps Send.",
             props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
             if (!said(a.getString("to"))) return@ToolSpec "ASK:Who should I text?"
             if (!said(a.getString("message"))) return@ToolSpec "ASK:What should the text say?"
             val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
-            val r = start(c, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(p.number))).putExtra("sms_body", a.getString("message")))
-            if (r == "ok") "Opened a text to ${p.name} with the message ready. They need to tap Send." else r
+            pendingSms = Sms(p.name, p.number, a.getString("message"))
+            "The text to ${p.name} is ready in the chat. It is sent when the user taps Send."
         },
         ToolSpec("call_contact", "Open the phone dialer with a contact's number ready. The user taps Call.",
             props("who" to str("Contact name or phone number")), listOf("who")) { c, a ->
@@ -478,6 +478,31 @@ object AssistantTools {
 
     /** The QR code made during the last request, if any (consumed once). */
     fun takeQr(): Qr? = pendingQr.also { pendingQr = null }
+
+    // ---------------- SMS confirmed in the chat ----------------
+
+    class Sms(val name: String, val number: String, val text: String)
+
+    @Volatile private var pendingSms: Sms? = null
+
+    /** The text prepared during the last request, if any (consumed once). The chat shows it with a Send button. */
+    fun takeSms(): Sms? = pendingSms.also { pendingSms = null }
+
+    /** Sends [s] with the default SIM. Only called after the user taps Send. Throws on failure. */
+    fun sendSms(c: Context, s: Sms) {
+        val sm = smsManager(c)
+        val parts = sm.divideMessage(s.text)
+        if (parts.size > 1) sm.sendMultipartTextMessage(s.number, null, parts, null, null)
+        else sm.sendTextMessage(s.number, null, s.text, null, null)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun smsManager(c: Context): android.telephony.SmsManager =
+        if (android.os.Build.VERSION.SDK_INT >= 31) c.getSystemService(android.telephony.SmsManager::class.java)
+        else android.telephony.SmsManager.getDefault()
+
+    fun openSmsApp(c: Context, s: Sms): String =
+        start(c, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(s.number))).putExtra("sms_body", s.text))
 
     private val makeQr = ToolSpec("make_qr",
         "Create a QR code and show it to the user. type 'wifi' = scan-to-join Wi-Fi (needs ssid, password, security), " +
