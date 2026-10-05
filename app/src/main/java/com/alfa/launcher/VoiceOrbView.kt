@@ -30,6 +30,8 @@ class VoiceOrbView(context: Context) : View(context) {
     private var target = 0f
     private var t = 0f              // seconds
     private var spin = 0f
+    private var spinSpeed = 40f     // eased toward the state's target speed
+    private var think = 0f          // 0..1, eased presence of the "thinking" dots
     private var lastMs = 0L
     private var running = false
 
@@ -52,8 +54,13 @@ class VoiceOrbView(context: Context) : View(context) {
             t += dt
             level += (target - level) * (1f - kotlin.math.exp(-dt / 0.08f))
             target *= 0.92f
-            val speed = when (state) { State.THINKING -> 260f; State.SPEAKING -> 70f; else -> 40f }
-            spin = (spin + speed * dt) % 360f
+            // Ease the spin speed and the thinking-dots toward the state's target,
+            // so switching states ramps smoothly instead of snapping.
+            val targetSpeed = when (state) { State.THINKING -> 260f; State.SPEAKING -> 70f; else -> 40f }
+            spinSpeed += (targetSpeed - spinSpeed) * (1f - kotlin.math.exp(-dt / 0.35f))
+            val targetThink = if (state == State.THINKING) 1f else 0f
+            think += (targetThink - think) * (1f - kotlin.math.exp(-dt / 0.25f))
+            spin = (spin + spinSpeed * dt) % 360f
             invalidate()
             postOnAnimation(this)
         }
@@ -130,11 +137,11 @@ class VoiceOrbView(context: Context) : View(context) {
         stroke.color = a(Color.WHITE, 0.25f)
         canvas.drawArc(oval, -spin * 0.6f, 200f, false, stroke)
 
-        // 5) thinking: dots chasing around the ring
-        if (state == State.THINKING) {
+        // 5) thinking: dots chasing around the ring (fade in/out with `think`)
+        if (think > 0.02f) {
             for (k in 0 until 6) {
                 val ang = Math.toRadians((spin * 1.4 + k * 18).toDouble())
-                fill.color = a(accent, 1f - k * 0.14f)
+                fill.color = a(accent, (1f - k * 0.14f) * think)
                 canvas.drawCircle(cx + (r * 1.38f * cos(ang)).toFloat(), cy + (r * 1.38f * sin(ang)).toFloat(), (3.4f - k * 0.4f) * d, fill)
             }
         }

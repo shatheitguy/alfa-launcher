@@ -73,7 +73,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         override fun onCommand(text: String) { transcript.text = text; run(text) }
         override fun onNoCommand() {
             if (busy) return
-            status.text = "I DIDN’T CATCH THAT"
+            setStatus("I DIDN’T CATCH THAT")
             closeLater(1400)
         }
     })
@@ -162,8 +162,18 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
 
     private fun listening() {
         orb.state = VoiceOrbView.State.LISTENING
-        status.text = "LISTENING"
+        setStatus("LISTENING")
         reply.text = ""
+    }
+
+    /** Crossfade the status label so phase changes (listening -> thinking -> speaking) read smoothly. */
+    private fun setStatus(label: String) {
+        if (status.text == label) return
+        if (status.text.isNullOrEmpty()) { status.text = label; status.alpha = 1f; return }
+        status.animate().alpha(0f).setDuration(110).withEndAction {
+            status.text = label
+            status.animate().alpha(1f).setDuration(140).start()
+        }.start()
     }
 
     fun close() {
@@ -192,7 +202,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         busy = true
         voice.stop()
         orb.state = VoiceOrbView.State.THINKING
-        status.text = "THINKING"
+        setStatus("THINKING")
         if (!engine.configured()) {
             finish("Connect your local AI server first: ⚙ ALFA OS Settings → ALFA Assistant.")
             return
@@ -237,7 +247,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
 
     private fun done(delay: Long) {
         orb.state = VoiceOrbView.State.IDLE
-        status.text = "DONE"
+        setStatus("DONE")
         busy = false
         // keep a QR code on screen long enough to scan it
         closeLater(holdMs?.coerceAtLeast(delay) ?: delay)
@@ -270,7 +280,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
 
     private fun speak(textToSay: String) {
         orb.state = VoiceOrbView.State.SPEAKING
-        status.text = "SPEAKING"
+        setStatus("SPEAKING")
         val say = {
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
