@@ -49,7 +49,13 @@ object Updater {
         c.setRequestProperty("Accept", "application/vnd.github+json")
         c.setRequestProperty("User-Agent", "ALFA-Launcher")
         try {
-            if (c.responseCode != 200) throw IOException("GitHub returned HTTP ${c.responseCode}")
+            val code = c.responseCode
+            if (code == 403 || code == 429) {
+                // The GitHub API allows ~60 unauthenticated checks per hour per network. Fall back to
+                // the releases page redirect, which isn't rate-limited the same way.
+                return fetchViaRedirect() ?: throw IOException(rateLimitMessage(c))
+            }
+            if (code != 200) throw IOException("GitHub returned HTTP $code")
             val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
             val tag = json.getString("tag_name")
             val assets = json.getJSONArray("assets")
@@ -75,6 +81,31 @@ object Updater {
         } finally {
             c.disconnect()
         }
+    }
+
+    /** Latest tag from github.com/…/releases/latest -> 302 …/tag/v1.0.N. No notes or size. */
+    private fun fetchViaRedirect(): Release? {
+        val c = URL("https://github.com/$REPO/releases/latest").openConnection() as HttpURLConnection
+        c.instanceFollowRedirects = false
+        c.connectTimeout = 8000
+        c.readTimeout = 8000
+        c.setRequestProperty("User-Agent", "ALFA-Launcher")
+        return try {
+            val tag = c.getHeaderField("Location")?.substringAfterLast("/tag/", "").orEmpty()
+            if (tag.isEmpty()) null
+            else Release(tag = tag, code = tag.substringAfterLast('.').toLongOrNull() ?: 0L, name = tag,
+                notes = "", apkUrl = LATEST_APK, size = 0L)
+        } catch (e: Exception) {
+            null
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    private fun rateLimitMessage(c: HttpURLConnection): String {
+        val reset = c.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+        val mins = if (reset != null) ((reset * 1000 - System.currentTimeMillis()) / 60_000 + 1).coerceAtLeast(1) else null
+        return "GitHub's update-check limit was reached" + (if (mins != null) " — try again in $mins min" else " — try again later")
     }
 
     // ---- in-app download via the system DownloadManager ----

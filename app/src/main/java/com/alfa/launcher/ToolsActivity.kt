@@ -370,6 +370,9 @@ class ToolsActivity : Activity() {
         }
         info.addView(tv("INSTALLED   v${Updater.currentName(this)}  (build $installedCode)", 12f, white, mono = true))
         info.addView(status, lp(8))
+        // Problems go on their own line so the release details above never disappear.
+        val note = tv("", 11f, Color.rgb(255, 140, 140), mono = true).apply { visibility = View.GONE }
+        info.addView(note, lp(8))
         add(info, 14)
 
         var release: Updater.Release? = null
@@ -458,29 +461,43 @@ class ToolsActivity : Activity() {
             main.post(poll)
         }
 
+        fun showRelease(rel: Updater.Release) {
+            val newer = rel.code > installedCode
+            val text = buildString {
+                append("LATEST      ${rel.tag}  (build ${rel.code})\n")
+                append("SIZE        ").append(if (rel.size > 0) String.format(Locale.US, "%.1f MB", rel.size / 1048576.0) else "—").append('\n')
+                append("STATUS      ").append(if (newer) "update available" else "up to date")
+                if (rel.notes.isNotEmpty()) append("\n\n").append(rel.notes)
+            }
+            if (status.text.toString() != text) status.text = text   // unchanged text = no relayout, no flicker
+            if (newer) setAction("Download update ${rel.tag}", true) else setAction("Up to date", false)
+        }
+
         check = {
+            // Keep the current details on screen while checking. Replacing them with one line
+            // collapsed the card and made every button jump, then jump back: the flicker.
             setAction("Checking…", false)
-            status.text = "checking GitHub…"
+            if (release == null) status.text = "checking GitHub…"
             bg {
                 try {
                     val rel = Updater.fetchLatest()
                     Updater.remember(this, rel)
                     ui {
                         release = rel
-                        val newer = rel.code > installedCode
-                        status.text = buildString {
-                            append("LATEST      ${rel.tag}  (build ${rel.code})\n")
-                            append("SIZE        ").append(String.format(Locale.US, "%.1f MB", rel.size / 1048576.0)).append('\n')
-                            append("STATUS      ").append(if (newer) "update available" else "up to date")
-                            if (rel.notes.isNotEmpty()) append("\n\n").append(rel.notes)
-                        }
-                        if (newer) setAction("Download update ${rel.tag}", true)
-                        else setAction("Up to date", false)
+                        note.visibility = View.GONE
+                        showRelease(rel)
                     }
                 } catch (e: Exception) {
                     ui {
-                        status.text = "check failed: ${e.message}"
-                        setAction("Download update", false)
+                        val known = release
+                        if (known == null) {
+                            status.text = "check failed: ${e.message}"
+                            setAction("Download update", false)
+                        } else {
+                            note.text = "couldn't refresh: ${e.message}"
+                            note.visibility = View.VISIBLE
+                            showRelease(known)
+                        }
                     }
                 }
             }
