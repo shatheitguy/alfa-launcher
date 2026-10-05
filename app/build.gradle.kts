@@ -48,6 +48,8 @@ android {
     }
 
     packaging {
+        // the bundled llama-server must be extracted to nativeLibraryDir so it can be executed
+        jniLibs { useLegacyPackaging = true }
         resources {
             // duplicate metadata from the Anthropic SDK's Jackson / OkHttp dependencies
             excludes += setOf(
