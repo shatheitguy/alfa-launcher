@@ -64,12 +64,15 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
         .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+        // finish quickly once you stop talking (default waits ~2 s of silence)
+        .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 900L)
+        .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
 
     fun startHotword() {
         if (mode == Mode.HOTWORD) return
         mode = Mode.HOTWORD
         main.removeCallbacks(restart)
-        main.postDelayed(restart, 400)
+        main.postDelayed(restart, 120)
     }
 
     private fun beginHotword() {
@@ -79,14 +82,15 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
         }
     }
 
-    fun listenCommand() {
+    /** [fresh] = the previous session already ended, so start right away without cancelling. */
+    fun listenCommand(fresh: Boolean = false) {
         main.removeCallbacks(restart)
         mode = Mode.COMMAND
         woke = true
-        try { recognizer().cancel() } catch (e: Exception) {}
+        if (!fresh) try { recognizer().cancel() } catch (e: Exception) {}
         main.postDelayed({
             if (mode == Mode.COMMAND) try { recognizer().startListening(intent()) } catch (e: Exception) { cb.onNoCommand() }
-        }, 150)
+        }, if (fresh) 0L else 80L)
     }
 
     fun stop() {
@@ -135,10 +139,10 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
             when (mode) {
                 Mode.HOTWORD -> {
                     val hit = all.firstNotNullOfOrNull { afterWake(it) }
-                    if (hit == null) { main.postDelayed(restart, 150); return }
+                    if (hit == null) { main.postDelayed(restart, 40); return }
                     if (!woke) { woke = true; cb.onWake() }
                     if (hit.length >= 2) { mode = Mode.COMMAND; cb.onCommand(hit) }
-                    else listenCommand()          // just "ALFA" -> now listen for the command
+                    else listenCommand(fresh = true)   // just "ALFA" -> listen for the command straight away
                 }
                 Mode.COMMAND -> {
                     val t = all.firstOrNull()?.trim().orEmpty()
@@ -154,7 +158,7 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
                 Mode.HOTWORD -> {
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) { mode = Mode.OFF; return }
                     val delay = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 150L
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 60L
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1200L
                         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> 4000L
                         else -> 800L

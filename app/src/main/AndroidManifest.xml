@@ -76,6 +76,14 @@
             android:name=".InstallReceiver"
             android:exported="false" />
 
+        <activity
+            android:name=".ModelsActivity"
+            android:exported="false"
+            android:label="ALFA Models"
+            android:taskAffinity="com.alfa.launcher.settings"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Alfa.Tools" />
+
         <!-- ALFA Assistant: own task so it shows in Recents and survives app switches -->
         <activity
             android:name=".AssistantActivity"

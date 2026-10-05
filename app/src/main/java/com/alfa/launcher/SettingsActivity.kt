@@ -37,7 +37,10 @@ import java.util.concurrent.Executors
  * ALFA OS Settings: every launcher option in one organised place.
  * Changes are saved to prefs immediately; the home screen re-applies them on resume.
  */
-class SettingsActivity : Activity() {
+open class SettingsActivity : Activity() {
+
+    /** Which page this screen shows: null = all settings, "models" = the on-device AI models page. */
+    protected open val page: String? = null
 
     companion object {
         private const val REQ_LOGO = 51
@@ -136,28 +139,33 @@ class SettingsActivity : Activity() {
         val y = scroll.scrollY
         content.removeAllViews()
 
-        header()
-        profileSection()
-        appearanceSection()
-        motionSection()
-        homeSection()
-        assistantSection()
-        systemSection()
-        updatesSection()       // last two: Updates, then About
-        aboutSection()
+        if (page == "models") {
+            header("Models", "ON-DEVICE AI  \u00B7  RUNS OFFLINE ON THIS PHONE")
+            modelsPage()
+        } else {
+            header("ALFA OS", "SYSTEM SETTINGS  \u00B7  v${Updater.currentName(this)}")
+            profileSection()
+            appearanceSection()
+            motionSection()
+            homeSection()
+            assistantSection()
+            systemSection()
+            updatesSection()       // last two: Updates, then About
+            aboutSection()
+        }
 
         scroll.post { scroll.scrollTo(0, y) }
     }
 
-    private fun header() {
+    private fun header(title: String, sub: String) {
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         row.addView(tv("‹", 28f, white).apply {
             setPadding(0, 0, dp(14), dp(4))
             setOnClickListener { finish() }
         })
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(tv("ALFA OS", 30f, white, font = "sans-serif-light"))
-        col.addView(tv("SYSTEM SETTINGS  ·  v${Updater.currentName(this)}", 10f, dim, mono = true).apply { letterSpacing = 0.18f })
+        col.addView(tv(title, 30f, white, font = "sans-serif-light"))
+        col.addView(tv(sub, 10f, dim, mono = true).apply { letterSpacing = 0.18f })
         row.addView(col)
         content.addView(row)
         content.addView(View(this).apply { setBackgroundColor(accent) },
@@ -513,7 +521,19 @@ class SettingsActivity : Activity() {
             prefs.edit().putString("ai_engine", it).apply(); build()
         }
         line(card)
-        if (engine == "builtin") builtinRows(card) else {
+        if (engine == "builtin") {
+            val sel = LocalLlm.selected(this) ?: LocalLlm.installed(this).firstOrNull()?.name
+            val count = LocalLlm.installed(this).size
+            actionRow(card, "Models",
+                when {
+                    !LocalLlm.supported(this) -> "Not available on this phone (needs 64-bit ARM)"
+                    sel != null -> "${sel.removeSuffix(".gguf")} in use \u00B7 $count downloaded" + (if (LocalLlm.isRunning()) " \u00B7 running" else "")
+                    else -> "Download a model to run ALFA Assistant offline"
+                },
+                if (sel == null && LocalLlm.supported(this)) "Get one" else null) {
+                startActivity(Intent(this, ModelsActivity::class.java))
+            }
+        } else {
             val url = prefs.getString("ai_server_url", "") ?: ""
             actionRow(card, "Local AI server", url.ifBlank { "Not set \u2014 e.g. http://192.168.1.10:11434 (Ollama on your PC)" },
                 if (url.isBlank()) "Add" else null) {
@@ -552,69 +572,79 @@ class SettingsActivity : Activity() {
 
     private val progressTick = Runnable { if (!isDestroyed) build() }
 
-    private fun builtinRows(card: LinearLayout) {
+    /** The Models page: engine status, downloaded models, catalogue, custom URL, log. */
+    private fun modelsPage() {
         if (!LocalLlm.supported(this)) {
-            actionRow(card, "Not available on this phone", "The on-device engine needs a 64-bit ARM phone", null, showChevron = false) {}
+            val c = section("ENGINE", "\u2726")
+            actionRow(c, "Not available on this phone", "The on-device engine needs a 64-bit ARM phone. Use a local server instead.", null, showChevron = false) {}
             return
         }
-        val running = LocalLlm.isRunning()
         val sel = LocalLlm.selected(this) ?: LocalLlm.installed(this).firstOrNull()?.name
-        actionRow(card, if (running) "On-device AI running" else "On-device AI stopped",
-            if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} · 127.0.0.1:${LocalLlm.PORT} · stops itself after 15 min idle"
-            else "Starts automatically when you ask ALFA something", if (running) "Stop" else if (sel != null) "Start" else null) {
+
+        // ---- engine ----
+        val eng = section("ENGINE", "\u2726")
+        val running = LocalLlm.isRunning()
+        actionRow(eng, if (running) "Running" else "Stopped",
+            if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} \u00B7 127.0.0.1:${LocalLlm.PORT} \u00B7 stops after 15 min idle"
+            else "Starts by itself when you ask ALFA something", if (running) "Stop" else if (sel != null) "Start" else null) {
             if (running) { LocalLlm.stop(); build() }
             else if (sel != null) {
-                toast("Loading model…")
+                toast("Loading model\u2026")
                 io.execute {
                     val err = try { LocalLlm.ensureRunning(this); null } catch (e: Exception) { e.message }
                     main.post { if (!isDestroyed) { toast(err ?: "On-device AI is ready"); build() } }
                 }
             }
         }
-        var downloading = false
-        LocalLlm.CATALOG.forEach { m ->
-            line(card)
-            val pct = LocalLlm.progress(this, m.file)
-            val have = LocalLlm.isInstalled(this, m.file)
-            val inUse = have && sel == m.file
-            if (pct >= 0) downloading = true
-            val sub = when {
-                pct >= 0 -> "Downloading… $pct%  ·  tap to cancel"
-                inUse -> "✓ In use · ${m.note}"
-                have -> "Downloaded · ${m.note}  ·  long-press to delete"
-                else -> "${String.format(Locale.US, "%.1f", m.sizeMb / 1024f)} GB · ${m.note}"
-            }
-            val badge = when { pct >= 0 -> null; inUse -> null; have -> "Use"; else -> "Download" }
-            actionRow(card, m.name, sub, badge) {
-                when {
-                    pct >= 0 -> { LocalLlm.cancelDownload(this, m.file); build() }
-                    have -> { LocalLlm.select(this, m.file); build() }
-                    else -> confirmDownload(m.name, m.sizeMb) { LocalLlm.download(this, m.url, m.file); LocalLlm.select(this, m.file); build() }
-                }
-            }
-            if (have) (card.getChildAt(card.childCount - 1)).setOnLongClickListener {
+
+        // ---- downloaded ----
+        val installed = LocalLlm.installed(this)
+        val down = section("DOWNLOADED", "\u2713")
+        if (installed.isEmpty()) {
+            actionRow(down, "No models yet", "Pick one below \u2014 Qwen2.5 1.5B is a good start", null, showChevron = false) {}
+        }
+        installed.forEachIndexed { i, f ->
+            if (i > 0) line(down)
+            val cat = LocalLlm.CATALOG.firstOrNull { it.file == f.name }
+            val inUse = sel == f.name
+            val sizeTxt = "${String.format(Locale.US, "%.1f", f.length() / 1_073_741_824.0)} GB"
+            actionRow(down, cat?.name ?: f.name.removeSuffix(".gguf"),
+                (if (inUse) "\u2713 In use \u00B7 " else "") + sizeTxt + " \u00B7 long-press to delete",
+                if (inUse) null else "Use") { LocalLlm.select(this, f.name); build() }
+            down.getChildAt(down.childCount - 1).setOnLongClickListener {
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setMessage("Delete ${m.name} from this phone? (${m.sizeMb} MB)")
-                    .setPositiveButton("Delete") { _, _ -> LocalLlm.delete(this, m.file); build() }
+                    .setMessage("Delete ${cat?.name ?: f.name} from this phone? ($sizeTxt)")
+                    .setPositiveButton("Delete") { _, _ -> LocalLlm.delete(this, f.name); build() }
                     .setNegativeButton("Cancel", null).show()
                 true
             }
         }
-        // models added by URL
-        LocalLlm.installed(this).filter { f -> LocalLlm.CATALOG.none { it.file == f.name } }.forEach { f ->
-            line(card)
-            val inUse = sel == f.name
-            actionRow(card, f.name.removeSuffix(".gguf"), (if (inUse) "✓ In use · " else "") +
-                "${f.length() / 1_048_576} MB · custom · long-press to delete", if (inUse) null else "Use") {
-                LocalLlm.select(this, f.name); build()
-            }
-            card.getChildAt(card.childCount - 1).setOnLongClickListener {
-                LocalLlm.delete(this, f.name); build(); true
+
+        // ---- catalogue ----
+        val avail = LocalLlm.CATALOG.filter { !LocalLlm.isInstalled(this, it.file) }
+        var downloading = false
+        if (avail.isNotEmpty()) {
+            val cat = section("AVAILABLE TO DOWNLOAD", "\u2193")
+            avail.forEachIndexed { i, m ->
+                if (i > 0) line(cat)
+                val pct = LocalLlm.progress(this, m.file)
+                if (pct >= 0) downloading = true
+                val gb = String.format(Locale.US, "%.1f", m.sizeMb / 1024f)
+                actionRow(cat, m.name,
+                    if (pct >= 0) "Downloading\u2026 $pct%  \u00B7  tap to cancel" else "$gb GB \u00B7 ${m.note}",
+                    if (pct >= 0) null else "Download") {
+                    if (pct >= 0) { LocalLlm.cancelDownload(this, m.file); build() }
+                    else confirmDownload(m.name, m.sizeMb) { LocalLlm.download(this, m.url, m.file); LocalLlm.select(this, m.file); build() }
+                }
             }
         }
-        line(card)
-        actionRow(card, "Add model from URL", "Any GGUF chat model (Hugging Face …/resolve/main/model.gguf)", null) {
-            editText("GGUF download URL", "https://huggingface.co/…/resolve/main/model.gguf", "") { url ->
+        val custom = prefs.getString("llm_custom_file", null)
+        if (custom != null && LocalLlm.progress(this, custom) >= 0) downloading = true
+
+        // ---- add your own ----
+        val own = section("ADD YOUR OWN", "+")
+        actionRow(own, "Model from URL", "Direct link to any GGUF chat model (Hugging Face \u2026/resolve/main/model.gguf)", null) {
+            editText("GGUF download URL", "https://huggingface.co/\u2026/resolve/main/model.gguf", "") { url ->
                 val u = url.trim()
                 if (!u.startsWith("http") || !u.substringBefore('?').endsWith(".gguf", true)) { toast("That must be a direct link to a .gguf file"); return@editText }
                 val name = u.substringBefore('?').substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -622,17 +652,28 @@ class SettingsActivity : Activity() {
                 LocalLlm.download(this, u, name); LocalLlm.select(this, name); build()
             }
         }
-        line(card)
-        actionRow(card, "Engine log", "llama.cpp server output, for troubleshooting", null) {
+        if (custom != null) {
+            val pct = LocalLlm.progress(this, custom)
+            if (pct >= 0) {
+                line(own)
+                actionRow(own, custom.removeSuffix(".gguf"), "Downloading\u2026 $pct%  \u00B7  tap to cancel", null) {
+                    LocalLlm.cancelDownload(this, custom); build()
+                }
+            }
+        }
+
+        // ---- troubleshooting ----
+        val tr = section("TROUBLESHOOTING", "\u2139")
+        actionRow(tr, "Engine log", "llama.cpp server output", null) {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("On-device AI log")
                 .setMessage(LocalLlm.logText().lines().takeLast(60).joinToString("\n").ifBlank { "Nothing yet." })
                 .setPositiveButton("OK", null).show()
         }
+
         main.removeCallbacks(progressTick)
         if (downloading) main.postDelayed(progressTick, 1500)
     }
-
     private fun confirmDownload(name: String, mb: Int, go: () -> Unit) {
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Download $name?")
