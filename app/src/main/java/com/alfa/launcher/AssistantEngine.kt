@@ -71,7 +71,7 @@ class AssistantEngine(private val ctx: Context) {
         return """
             You are ALFA, the assistant built into the ALFA launcher on $name's Android phone (${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}).
             You help by acting through your tools: opening apps, changing ALFA's look and settings, setting timers and alarms, opening system settings, and running quick IT checks (ping, DNS, SSL, network, device status, Wake-on-LAN). $name is an IT professional, so technical answers are welcome.
-            When a request maps to a tool, call the tool rather than describing how to do it. Only call a tool that clearly matches what was asked; never substitute an unrelated one. If the user is chatting or asking a question, just answer it yourself in conversation; only search the web when they explicitly ask you to search. Do several steps in one go when asked. If no tool can do what was asked, say so plainly in one sentence and suggest the closest option.
+            When a request maps to a tool, call the tool rather than describing how to do it. Only call a tool that clearly matches what was asked; never substitute an unrelated one. If the user is chatting or asking a question, just answer it yourself in conversation. Never invent details the user did not give (names, numbers, Wi-Fi names, passwords, links, message text): ask for them instead; only search the web when they explicitly ask you to search. Do several steps in one go when asked. If no tool can do what was asked, say so plainly in one sentence and suggest the closest option.
             Reply briefly, one to three short sentences, in plain text without markdown, because replies are shown in a small panel and read aloud. After acting, confirm what you did.
         """.trimIndent()
     }
@@ -146,6 +146,14 @@ class AssistantEngine(private val ctx: Context) {
                     else -> JSONObject()
                 }
                 val out = runTool(fn.getString("name"), args, listener, intent)
+                if (out.startsWith("ASK:")) {
+                    // the action needs details the user hasn't given: ask them directly, don't let the model guess
+                    val q = out.removePrefix("ASK:").trim()
+                    history.put(JSONObject().put("role", "tool").put("tool_call_id", call.optString("id"))
+                        .put("name", fn.getString("name")).put("content", "Not done yet. Asked the user: $q"))
+                    history.put(JSONObject().put("role", "assistant").put("content", q))
+                    return q
+                }
                 history.put(JSONObject().put("role", "tool").put("tool_call_id", call.optString("id"))
                     .put("name", fn.getString("name")).put("content", out))
             }
@@ -158,8 +166,12 @@ class AssistantEngine(private val ctx: Context) {
         if (!AssistantTools.matches(name, request))
             return "Not done: \"$name\" does not match what the user asked. Use a different tool that fits the request, or reply without a tool."
         for (r in spec.required) if (!input.has(r)) return "Missing required field '$r'."
-        listener.onAction(label(name, input))
-        return try { spec.run(ctx, input) } catch (e: Exception) { "Failed: ${e.message ?: e.javaClass.simpleName}" }
+        AssistantTools.currentRequest = request
+        return try {
+            val r = spec.run(ctx, input)
+            if (!r.startsWith("ASK:")) listener.onAction(label(name, input))
+            r
+        } catch (e: Exception) { "Failed: ${e.message ?: e.javaClass.simpleName}" }
     }
 
     private fun label(name: String, a: JSONObject): String = when (name) {
