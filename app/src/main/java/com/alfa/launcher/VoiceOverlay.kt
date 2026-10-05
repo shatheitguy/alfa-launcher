@@ -54,6 +54,18 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         private set
     private var busy = false
 
+    /**
+     * Bumped on every open and close. Delayed closes and fade-out end actions only act if the
+     * session they belong to is still current — before this, a timer or animation left over from
+     * the previous session could close a freshly opened overlay ("sometimes it doesn't open").
+     */
+    private var session = 0
+
+    private fun closeLater(delay: Long) {
+        val s = session
+        main.postDelayed({ if (s == session && isOpen && !busy) close() }, delay)
+    }
+
     val voice = VoiceListener(act, object : VoiceListener.Callbacks {
         override fun onWake() { show(); listening() }
         override fun onPartial(text: String) { transcript.text = text }
@@ -62,7 +74,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         override fun onNoCommand() {
             if (busy) return
             status.text = "I DIDN’T CATCH THAT"
-            main.postDelayed({ if (!busy) close() }, 1400)
+            closeLater(1400)
         }
     })
 
@@ -127,6 +139,10 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
     private fun show() {
         if (isOpen) return
         isOpen = true
+        session++
+        // stop a fade-out that may still be running from the last close
+        animate().cancel()
+        orb.animate().cancel()
         val accent = MainActivity.accentOf(act)
         orb.accent = accent
         status.setTextColor(accent)
@@ -154,10 +170,13 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         if (!isOpen) return
         isOpen = false
         busy = false
+        val s = ++session
         voice.stop()
         tts?.stop()
         orb.animate().scaleX(0.5f).scaleY(0.5f).setDuration(220).start()
-        animate().alpha(0f).setDuration(220).withEndAction { visibility = GONE; onClosed() }.start()
+        animate().alpha(0f).setDuration(220).withEndAction {
+            if (s == session) { visibility = GONE; onClosed() }   // reopened meanwhile: leave it visible
+        }.start()
     }
 
     fun destroy() {
@@ -195,8 +214,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
                 if (!isOpen) return@post
                 if (AssistantTools.needsContacts) {
                     AssistantTools.needsContacts = false
-                    @Suppress("DEPRECATION")
-                    act.requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 83)
+                    Perms.request(act, android.Manifest.permission.READ_CONTACTS, 83, "Contacts")
                 }
                 if (qr != null) {
                     qrImg.setImageBitmap(qr.bitmap); qrImg.visibility = VISIBLE
@@ -222,7 +240,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         status.text = "DONE"
         busy = false
         // keep a QR code on screen long enough to scan it
-        main.postDelayed({ if (isOpen && !busy) close() }, holdMs?.coerceAtLeast(delay) ?: delay)
+        closeLater(holdMs?.coerceAtLeast(delay) ?: delay)
     }
 
     private fun chip(label: String) {
