@@ -12,6 +12,16 @@
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- ALFA Assistant: set timers / alarms in the clock app -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- ALFA Assistant voice: "ALFA" wake word and voice commands (asked for only when you turn voice on) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
     <!-- self-update: ALFA installs its own new versions (user confirms each one) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

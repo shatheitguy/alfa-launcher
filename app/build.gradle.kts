@@ -62,6 +62,4 @@ android {
 dependencies {
     // QR code encoding (pure Java, no Android deps)
     implementation("com.google.zxing:core:3.5.3")
-    // ALFA Assistant: official Anthropic SDK (Claude)
-    implementation("com.anthropic:anthropic-java:2.34.0")
 }

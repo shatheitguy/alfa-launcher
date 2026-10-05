@@ -41,6 +41,7 @@ class SettingsActivity : Activity() {
     companion object {
         private const val REQ_LOGO = 51
         private const val REQ_PHOTOS = 53
+        private const val REQ_MIC = 54
     }
 
     private val prefs by lazy { getSharedPreferences("alfa", MODE_PRIVATE) }
@@ -503,45 +504,91 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** ALFA Assistant: which AI to use and how to reach it. */
+    /** ALFA Assistant: the user's own local AI server (OpenAI-compatible) + voice options. */
     private fun assistantSection() {
-        val card = section("ALFA ASSISTANT", "✦")
-        val provider = prefs.getString("ai_provider", "claude") ?: "claude"
-        choiceRow(card, "AI provider", listOf("Claude" to "claude", "My own server" to "server"), provider) {
-            prefs.edit().putString("ai_provider", it).apply(); build()
-        }
-        line(card)
-        if (provider == "claude") {
-            val key = prefs.getString("ai_claude_key", "") ?: ""
-            actionRow(card, "Claude API key",
-                if (key.isBlank()) "Not set — create one at console.anthropic.com" else "•••• " + key.takeLast(4),
-                if (key.isBlank()) "Add" else null) {
-                editText("Claude API key", "sk-ant-…", key, secret = true) { prefs.edit().putString("ai_claude_key", it.trim()).apply(); build() }
-            }
-            line(card)
-            val model = prefs.getString("ai_claude_model", "")?.ifBlank { null } ?: "claude-opus-5-5"
-            actionRow(card, "Model", model, null) {
-                editText("Claude model", "claude-opus-5-5", model) { prefs.edit().putString("ai_claude_model", it.trim()).apply(); build() }
-            }
-        } else {
-            val url = prefs.getString("ai_server_url", "") ?: ""
-            actionRow(card, "Server URL", url.ifBlank { "Not set — e.g. http://192.168.1.10:11434/v1 (Ollama)" }, if (url.isBlank()) "Add" else null) {
-                editText("OpenAI-compatible server URL", "http://192.168.1.10:11434/v1", url) { prefs.edit().putString("ai_server_url", it.trim()).apply(); build() }
-            }
-            line(card)
-            val model = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
-            actionRow(card, "Model", "$model — pick one that supports tool calling", null) {
-                editText("Model name", "llama3.1", model) { prefs.edit().putString("ai_server_model", it.trim()).apply(); build() }
-            }
-            line(card)
-            val skey = prefs.getString("ai_server_key", "") ?: ""
-            actionRow(card, "API key (optional)", if (skey.isBlank()) "None" else "•••• " + skey.takeLast(4), null) {
-                editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
+        val card = section("ALFA ASSISTANT", "\u2726")
+        val url = prefs.getString("ai_server_url", "") ?: ""
+        actionRow(card, "Local AI server", url.ifBlank { "Not set \u2014 e.g. http://192.168.1.10:11434 (Ollama on your PC)" },
+            if (url.isBlank()) "Add" else null) {
+            editText("Server address (OpenAI-compatible)", "http://192.168.1.10:11434", url) {
+                prefs.edit().putString("ai_server_url", it.trim()).apply(); build()
             }
         }
         line(card)
-        actionRow(card, "Open ALFA Assistant", "Also: tap ✦ on the home screen, long-press it for voice", null) {
+        val model = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
+        actionRow(card, "Model", "$model \u2014 tap to pick from your server", null) { pickModel() }
+        line(card)
+        val skey = prefs.getString("ai_server_key", "") ?: ""
+        actionRow(card, "API key (optional)", if (skey.isBlank()) "None \u2014 only if your server requires one" else "\u2022\u2022\u2022\u2022 " + skey.takeLast(4), null) {
+            editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
+        }
+        line(card)
+        actionRow(card, "Test connection", "Checks the server and lists its models", null) { testServer() }
+        line(card)
+        toggleRow(card, "Wake word \u201CALFA\u201D", "Say \u201CALFA\u201D while the home screen is showing. Uses the microphone on-device while on.",
+            "wake_word", false) { on ->
+            if (on && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                @Suppress("DEPRECATION")
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQ_MIC)
+            }
+        }
+        line(card)
+        toggleRow(card, "Speak replies", "ALFA reads its answers aloud in voice mode", "ai_speak", true)
+        line(card)
+        actionRow(card, "Open ALFA Assistant", "Tap \u2726 on the home screen to type, long-press it to talk", null) {
             startActivity(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC && grantResults.none { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+            prefs.edit().putBoolean("wake_word", false).apply()
+            toast("ALFA needs microphone access to hear \u201CALFA\u201D")
+            build()
+        }
+    }
+
+    private fun testServer() {
+        val url = prefs.getString("ai_server_url", "") ?: ""
+        if (url.isBlank()) { toast("Add your server address first"); return }
+        toast("Connecting\u2026")
+        io.execute {
+            val msg = try {
+                val models = AssistantEngine.listModels(url, prefs.getString("ai_server_key", "") ?: "")
+                "\u2713 Connected to ${AssistantEngine.baseUrl(url)}\n\n${models.size} model(s): " + models.take(12).joinToString(", ")
+            } catch (e: Exception) {
+                "\u2717 Couldn't connect to ${AssistantEngine.baseUrl(url)}\n\n${e.message ?: e.javaClass.simpleName}\n\n" +
+                    "Check the phone and server are on the same network (or Tailscale), and that the server listens on all " +
+                    "interfaces \u2014 for Ollama set OLLAMA_HOST=0.0.0.0. Use 127.0.0.1 only if the server runs on this phone."
+            }
+            main.post {
+                if (isDestroyed) return@post
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Local AI server").setMessage(msg).setPositiveButton("OK", null).show()
+            }
+        }
+    }
+
+    private fun pickModel() {
+        val url = prefs.getString("ai_server_url", "") ?: ""
+        val manual = {
+            val cur = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
+            editText("Model name", "llama3.1", cur) { prefs.edit().putString("ai_server_model", it.trim()).apply(); build() }
+        }
+        if (url.isBlank()) { manual(); return }
+        io.execute {
+            val models = try { AssistantEngine.listModels(url, prefs.getString("ai_server_key", "") ?: "") } catch (e: Exception) { emptyList() }
+            main.post {
+                if (isDestroyed) return@post
+                if (models.isEmpty()) { toast("Couldn't list models \u2014 type the name"); manual(); return@post }
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Pick a model (needs tool calling)")
+                    .setItems(models.toTypedArray()) { _, i -> prefs.edit().putString("ai_server_model", models[i]).apply(); build() }
+                    .setNeutralButton("Type name") { _, _ -> manual() }
+                    .show()
+            }
         }
     }
 

@@ -71,6 +71,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQ_HOME = 42
+        private const val REQ_MIC = 44
         private const val REQ_LOGO = 43
         private const val MAX_DOCK = 5
         val ACCENTS = listOf(
@@ -218,6 +219,11 @@ class MainActivity : Activity() {
         avatar.clipToOutline = true
         findViewById<View>(R.id.profileRow).setOnClickListener { openSettings() }
         findViewById<View>(R.id.settingsButton).setOnClickListener { openSettings() }
+        voiceOverlay = VoiceOverlay(this) {
+            swipe.gesturesEnabled = galaxy.visibility != View.VISIBLE
+            resumeWake()
+        }
+        swipe.addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
         findViewById<TextView>(R.id.assistantButton).apply {
             setOnClickListener { openAssistant(false) }
             setOnLongClickListener {
@@ -334,7 +340,9 @@ class MainActivity : Activity() {
                 if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
             showUpdateChip()
             handler.post(tick)
+            resumeWake()
         }
+        resumed = true
         if (Updater.shouldAutoCheck(this)) {
             // stamp first so an offline phone doesn't retry on every Home press
             prefs.edit().putLong("update_checked_at", System.currentTimeMillis()).apply()
@@ -363,6 +371,9 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         handler.removeCallbacks(tick)
+        resumed = false
+        // stop the wake-word loop as soon as ALFA isn't in front (the overlay can still finish a reply)
+        if (!voiceOverlay.isOpen) voiceOverlay.voice.stop()
         super.onPause()
     }
 
@@ -407,6 +418,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         unregisterReceiver(profileReceiver)
         launcherApps?.unregisterCallback(appsCallback)
+        voiceOverlay.destroy()
         handler.removeCallbacksAndMessages(null)
         io.shutdown()
         super.onDestroy()
@@ -414,11 +426,13 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        if (voiceOverlay.isOpen) { voiceOverlay.close(); return }
         if (galaxy.visibility == View.VISIBLE) closeGalaxy() else hideKeyboard()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (voiceOverlay.isOpen) { voiceOverlay.close(); return }
         if (galaxy.visibility == View.VISIBLE) closeGalaxy()
     }
 
@@ -742,9 +756,40 @@ class MainActivity : Activity() {
 
     private fun openAssistant(voice: Boolean) {
         if (galaxy.visibility == View.VISIBLE) closeGalaxy(false)
-        startSafe(Intent(this, AssistantActivity::class.java)
-            .putExtra(AssistantActivity.EXTRA_VOICE, voice)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (voice) {
+            if (!hasMic()) {
+                @Suppress("DEPRECATION")
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQ_MIC)
+                return
+            }
+            voiceOverlay.openAndListen()
+            return
+        }
+        startSafe(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    // ---------------- "ALFA" wake word ----------------
+
+    private lateinit var voiceOverlay: VoiceOverlay
+    private var resumed = false
+
+    private fun hasMic() = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Listen for "ALFA" only while the home screen is in front and the option is on. */
+    private fun resumeWake() {
+        if (resumed && !voiceOverlay.isOpen && prefs.getBoolean("wake_word", false) && hasMic() && VoiceListener.available(this)) {
+            voiceOverlay.voice.startHotword()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC) {
+            if (grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) voiceOverlay.openAndListen()
+            else toast("ALFA needs microphone access for voice")
+        }
     }
 
     private fun openSettings() {
