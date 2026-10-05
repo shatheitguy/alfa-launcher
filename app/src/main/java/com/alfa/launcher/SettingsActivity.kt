@@ -139,6 +139,7 @@ class SettingsActivity : Activity() {
         appearanceSection()
         motionSection()
         homeSection()
+        assistantSection()
         systemSection()
         updatesSection()       // last two: Updates, then About
         aboutSection()
@@ -500,6 +501,67 @@ class SettingsActivity : Activity() {
                 .setNegativeButton("Cancel", null)
                 .show()
         }
+    }
+
+    /** ALFA Assistant: which AI to use and how to reach it. */
+    private fun assistantSection() {
+        val card = section("ALFA ASSISTANT", "✦")
+        val provider = prefs.getString("ai_provider", "claude") ?: "claude"
+        choiceRow(card, "AI provider", listOf("Claude" to "claude", "My own server" to "server"), provider) {
+            prefs.edit().putString("ai_provider", it).apply(); build()
+        }
+        line(card)
+        if (provider == "claude") {
+            val key = prefs.getString("ai_claude_key", "") ?: ""
+            actionRow(card, "Claude API key",
+                if (key.isBlank()) "Not set — create one at console.anthropic.com" else "•••• " + key.takeLast(4),
+                if (key.isBlank()) "Add" else null) {
+                editText("Claude API key", "sk-ant-…", key, secret = true) { prefs.edit().putString("ai_claude_key", it.trim()).apply(); build() }
+            }
+            line(card)
+            val model = prefs.getString("ai_claude_model", "")?.ifBlank { null } ?: "claude-opus-5-5"
+            actionRow(card, "Model", model, null) {
+                editText("Claude model", "claude-opus-5-5", model) { prefs.edit().putString("ai_claude_model", it.trim()).apply(); build() }
+            }
+        } else {
+            val url = prefs.getString("ai_server_url", "") ?: ""
+            actionRow(card, "Server URL", url.ifBlank { "Not set — e.g. http://192.168.1.10:11434/v1 (Ollama)" }, if (url.isBlank()) "Add" else null) {
+                editText("OpenAI-compatible server URL", "http://192.168.1.10:11434/v1", url) { prefs.edit().putString("ai_server_url", it.trim()).apply(); build() }
+            }
+            line(card)
+            val model = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
+            actionRow(card, "Model", "$model — pick one that supports tool calling", null) {
+                editText("Model name", "llama3.1", model) { prefs.edit().putString("ai_server_model", it.trim()).apply(); build() }
+            }
+            line(card)
+            val skey = prefs.getString("ai_server_key", "") ?: ""
+            actionRow(card, "API key (optional)", if (skey.isBlank()) "None" else "•••• " + skey.takeLast(4), null) {
+                editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
+            }
+        }
+        line(card)
+        actionRow(card, "Open ALFA Assistant", "Also: tap ✦ on the home screen, long-press it for voice", null) {
+            startActivity(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    private fun editText(title: String, hint: String, value: String, secret: Boolean = false, onSave: (String) -> Unit) {
+        val field = EditText(this).apply {
+            setText(value)
+            this.hint = hint
+            setSingleLine()
+            setTextColor(white)
+            setHintTextColor(dim)
+            if (secret) inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSelection(text.length)
+        }
+        val box = FrameLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(field) }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton("Save") { _, _ -> onSave(field.text.toString()) }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /** Updates: first section in Settings. */
