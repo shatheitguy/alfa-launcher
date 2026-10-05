@@ -304,14 +304,16 @@ object AssistantTools {
     }
 
     private fun noContact(who: String) =
-        if (needsContacts) "I need permission to read contacts to find \"$who\". The app is asking the user now; try again after they allow it."
-        else "No contact matching \"$who\". Ask the user for the exact name or the phone number."
+        if (needsContacts) "ASK:I need access to your contacts to find \u201C$who\u201D. Please allow it, then ask me again."
+        else "ASK:I couldn\u2019t find \u201C$who\u201D in your contacts. What\u2019s their exact name or phone number?"
 
     private fun installed(c: Context, pkg: String) = try { c.packageManager.getPackageInfo(pkg, 0); true } catch (e: Exception) { false }
 
     private val appActions: List<ToolSpec> = listOf(
         ToolSpec("whatsapp_message", "Open a WhatsApp chat with a contact (name or number) with the message typed in. The user taps Send.",
             props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
+            if (!said(a.getString("to"))) return@ToolSpec "ASK:Who should I message on WhatsApp?"
+            if (!said(a.getString("message"))) return@ToolSpec "ASK:What should the message say?"
             val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
             val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { installed(c, it) }
                 ?: return@ToolSpec "WhatsApp isn't installed."
@@ -321,12 +323,15 @@ object AssistantTools {
         },
         ToolSpec("sms_message", "Open the SMS app to a contact with the text typed in. The user taps Send.",
             props("to" to str("Contact name or phone number"), "message" to str("Message text")), listOf("to", "message")) { c, a ->
+            if (!said(a.getString("to"))) return@ToolSpec "ASK:Who should I text?"
+            if (!said(a.getString("message"))) return@ToolSpec "ASK:What should the text say?"
             val p = person(c, a.getString("to")) ?: return@ToolSpec noContact(a.getString("to"))
             val r = start(c, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(p.number))).putExtra("sms_body", a.getString("message")))
             if (r == "ok") "Opened a text to ${p.name} with the message ready. They need to tap Send." else r
         },
         ToolSpec("call_contact", "Open the phone dialer with a contact's number ready. The user taps Call.",
             props("who" to str("Contact name or phone number")), listOf("who")) { c, a ->
+            if (!said(a.getString("who"))) return@ToolSpec "ASK:Who should I call?"
             val p = person(c, a.getString("who")) ?: return@ToolSpec noContact(a.getString("who"))
             val r = start(c, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(p.number))))
             if (r == "ok") "Dialer open with ${p.name} (${p.number}). Tap Call." else r
@@ -447,6 +452,22 @@ object AssistantTools {
 
     @Volatile private var pendingQr: Qr? = null
 
+    /** What the user actually said this turn (+ the previous turn), set by the engine before running a tool. */
+    @Volatile var currentRequest = ""
+
+    /** Did the user really say this value? Stops small models from filling in made-up examples. */
+    private fun said(value: String): Boolean {
+        val v = value.lowercase(Locale.ROOT).replace(Regex("^https?://"), "").trim().trimEnd('/')
+        if (v.isEmpty()) return false
+        val req = currentRequest.lowercase(Locale.ROOT)
+        if (req.contains(v)) return true
+        val words = v.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }
+        if (words.isEmpty()) return false
+        return words.count { req.contains(it) } >= (words.size * 0.7).coerceAtLeast(1.0)
+    }
+
+    private fun mentions(vararg w: String) = w.any { currentRequest.lowercase(Locale.ROOT).contains(it) }
+
     /** The QR code made during the last request, if any (consumed once). */
     fun takeQr(): Qr? = pendingQr.also { pendingQr = null }
 
@@ -460,24 +481,32 @@ object AssistantTools {
             "password" to str("Wi-Fi password (type wifi; empty for an open network)"),
             "security" to str("Wi-Fi security (type wifi)", listOf("WPA", "WEP", "open")),
         ), listOf("type")) { _, a ->
-        val type = a.getString("type").lowercase(Locale.ROOT)
+        var type = a.getString("type").lowercase(Locale.ROOT)
+        // decide the kind from what the user said, not what the model guessed
+        val saidWifi = mentions("wifi", "wi-fi", "wi fi", "network", "ssid", "password", "hotspot")
+        val saidLink = mentions("http", "www.", ".com", ".org", ".net", ".io", ".ae", "link", "url", "website", "site")
+        if (type == "wifi" && !saidWifi) type = if (saidLink) "link" else "text"
+        if (!saidWifi && !saidLink && !said(a.optString("content")))
+            return@ToolSpec "ASK:What should the QR code be for: a Wi-Fi network, a link, or some text? And what should it contain?"
         val (payload, caption, name) = when (type) {
             "wifi" -> {
                 val ssid = a.optString("ssid").trim()
-                if (ssid.isEmpty()) return@ToolSpec "Ask the user for the Wi-Fi network name (and password) first."
+                if (ssid.isEmpty() || !said(ssid)) return@ToolSpec "ASK:What\u2019s the Wi-Fi network name and its password?"
                 val pass = a.optString("password")
-                val sec = if (pass.isEmpty()) "open" else a.optString("security", "WPA")
+                val open = mentions("open", "no password", "without password", "passwordless")
+                if (!open && (pass.isEmpty() || !said(pass))) return@ToolSpec "ASK:What\u2019s the password for \u201C$ssid\u201D? (Or say it\u2019s an open network.)"
+                val sec = if (open) "open" else a.optString("security", "WPA")
                 Triple(QrUtil.wifi(ssid, pass, sec), "Scan to join “$ssid”", "wifi-$ssid")
             }
             "link" -> {
                 var u = a.optString("content").trim()
-                if (u.isEmpty()) return@ToolSpec "Ask the user which link to encode."
+                if (u.isEmpty() || !said(u)) return@ToolSpec "ASK:Which link should the QR code open?"
                 if (!u.contains("://")) u = "https://$u"
                 Triple(u, u, "link-qr")
             }
             else -> {
                 val t = a.optString("content").trim()
-                if (t.isEmpty()) return@ToolSpec "Ask the user what text to encode."
+                if (t.isEmpty() || !said(t)) return@ToolSpec "ASK:What text should the QR code contain?"
                 Triple(t, if (t.length > 50) t.take(50) + "…" else t, "text-qr")
             }
         }
