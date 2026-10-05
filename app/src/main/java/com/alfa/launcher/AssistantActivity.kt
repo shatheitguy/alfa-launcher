@@ -225,11 +225,28 @@ class AssistantActivity : Activity() {
                 turn.text.visibility = View.VISIBLE
                 glide(turn.text)
                 if (qr != null) addQr(turn, qr)
+                askContactsIfNeeded()
                 busy = false
                 sendBtn.alpha = if (input.text.isNullOrBlank()) 0.35f else 1f
                 refreshStatus()
                 scrollDown()
             }
+        }
+    }
+
+    /** An action needed contacts to find someone: ask once, then the user can repeat the request. */
+    @Suppress("DEPRECATION")
+    private fun askContactsIfNeeded() {
+        if (!AssistantTools.needsContacts) return
+        AssistantTools.needsContacts = false
+        requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 82)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 82 && grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+            toast("Contacts allowed — ask again and I'll find them")
         }
     }
 
