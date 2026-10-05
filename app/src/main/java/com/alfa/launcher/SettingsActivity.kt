@@ -550,7 +550,20 @@ open class SettingsActivity : Activity() {
                 editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
             }
             line(card)
+            choiceRow(card, "Context window", listOf(4096, 8192, 32768, 131072).map {
+                (if (it >= 131072) "128K" else "${it / 1024}K") to it.toString()
+            }, prefs.getInt("ai_server_ctx", 8192).toString()) {
+                prefs.edit().putInt("ai_server_ctx", it.toInt()).apply(); build()
+            }
+            line(card)
             actionRow(card, "Test connection", "Checks the server and lists its models", null) { testServer() }
+        }
+        line(card)
+        toggleRow(card, "Memory", "ALFA remembers facts you ask it to (“remember that …”) in every chat", "ai_memory_on", true)
+        line(card)
+        val facts = AssistantMemory.items(this)
+        actionRow(card, "Edit memory", if (facts.isEmpty()) "Nothing saved yet" else "${facts.size} saved · one fact per line", null) {
+            editMemory()
         }
         line(card)
         toggleRow(card, "Wake word \u201CALFA\u201D", "Say \u201CALFA\u201D while the home screen is showing. Uses the microphone on-device while on.",
@@ -585,7 +598,8 @@ open class SettingsActivity : Activity() {
         val eng = section("ENGINE", "\u2726")
         val running = LocalLlm.isRunning()
         actionRow(eng, if (running) "Running" else "Stopped",
-            if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} \u00B7 127.0.0.1:${LocalLlm.PORT} \u00B7 stops after 15 min idle"
+            if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} \u00B7 ${LocalLlm.runningContext / 1024}K context \u00B7 " +
+                "stays loaded ${LocalLlm.keepLabel(LocalLlm.keepMinutes(this))}" + (if (LocalLlm.keepMinutes(this) >= 0) " after last use" else "")
             else "Starts by itself when you ask ALFA something", if (running) "Stop" else if (sel != null) "Start" else null) {
             if (running) { LocalLlm.stop(); build() }
             else if (sel != null) {
@@ -596,6 +610,22 @@ open class SettingsActivity : Activity() {
                 }
             }
         }
+        line(eng)
+        choiceRow(eng, "Keep model loaded",
+            LocalLlm.KEEP_OPTIONS.map { (if (it < 0) "Always" else if (it >= 60) "${it / 60} h" else "$it min") to it.toString() },
+            LocalLlm.keepMinutes(this).toString()) {
+            LocalLlm.setKeepMinutes(this, it.toInt()); build()
+        }
+        actionRow(eng, "", "How long the model stays in RAM after your last message, so replies start instantly. " +
+            "Android may still close it if the phone runs low on memory.", null, showChevron = false) {}
+        line(eng)
+        choiceRow(eng, "Context window",
+            LocalLlm.CONTEXT_OPTIONS.map { "${it / 1024}K" to it.toString() },
+            LocalLlm.contextSize(this).toString()) {
+            LocalLlm.setContextSize(this, it.toInt()); build()
+        }
+        actionRow(eng, "", "How much of the chat the model can see at once. Bigger remembers more but uses more RAM " +
+            "and is slower; 8K suits most phones. Old messages are trimmed automatically to fit.", null, showChevron = false) {}
 
         // ---- downloaded ----
         val installed = LocalLlm.installed(this)
@@ -733,6 +763,27 @@ open class SettingsActivity : Activity() {
                     .show()
             }
         }
+    }
+
+    private fun editMemory() {
+        val field = EditText(this).apply {
+            setText(AssistantMemory.items(this@SettingsActivity).joinToString("\n"))
+            hint = "One fact per line, e.g. My home server is 192.168.0.170"
+            setTextColor(white)
+            setHintTextColor(dim)
+            minLines = 4
+            maxLines = 12
+            gravity = Gravity.TOP or Gravity.START
+            setSelection(text.length)
+        }
+        val box = FrameLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(field) }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("ALFA memory")
+            .setView(box)
+            .setPositiveButton("Save") { _, _ -> AssistantMemory.setItems(this, field.text.toString().lines()); build() }
+            .setNeutralButton("Clear all") { _, _ -> AssistantMemory.setItems(this, emptyList()); build() }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun editText(title: String, hint: String, value: String, secret: Boolean = false, onSave: (String) -> Unit) {

@@ -249,6 +249,13 @@ object AssistantTools {
                 wake(c, a.getString("name"))
             },
             makeQr,
+            ToolSpec("remember", "Save a short fact the user asked you to remember. It is kept for all future chats.",
+                props("fact" to str("The fact, in the user's words, e.g. 'my home server is 192.168.0.170'")), listOf("fact")) { c, a ->
+                val fact = a.getString("fact")
+                if (!said(fact)) return@ToolSpec "ASK:What should I remember?"
+                if (!AssistantMemory.enabled(c)) return@ToolSpec "Memory is turned off in ALFA OS Settings → ALFA Assistant."
+                if (AssistantMemory.add(c, fact)) "Remembered: $fact" else "Nothing to remember."
+            },
         ) + appActions
     }
 
@@ -432,6 +439,7 @@ object AssistantTools {
         "open_url" to listOf("http", "www.", ".com", ".org", ".net", ".io", ".ae", ".in", "website", "link"),
         "open_camera" to listOf("camera", "photo", "picture", "selfie"),
         "make_qr" to listOf("qr", "barcode", "scan code", "share wifi", "share wi-fi", "share the wifi"),
+        "remember" to listOf("remember", "don't forget", "dont forget", "note that", "keep in mind", "save this"),
     )
 
     fun matches(name: String, text: String): Boolean {

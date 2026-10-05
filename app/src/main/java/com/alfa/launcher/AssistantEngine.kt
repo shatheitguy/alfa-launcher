@@ -23,10 +23,22 @@ class AssistantEngine(private val ctx: Context) {
     }
 
     private val prefs = ctx.getSharedPreferences("alfa", Context.MODE_PRIVATE)
-    private val history = JSONArray()
+
+    /** The open conversation; saved after every reply so it survives restarts. */
+    var chat: ChatStore.Chat = ChatStore.lastOrNew(ctx)
+        private set
+    private val history: JSONArray get() = chat.history
     private val recent = ArrayDeque<String>()
     var lastUsed = 0L
         private set
+
+    /** Tokens the last request filled (prompt + reply), as reported by the server; 0 = unknown. */
+    @Volatile var contextUsed = 0
+        private set
+
+    /** The model's context window in tokens. */
+    val contextSize: Int get() =
+        if (engine == "builtin") LocalLlm.contextSize(ctx) else prefs.getInt("ai_server_ctx", 8192)
 
     /** "builtin" = ALFA's on-device llama-server, "server" = the user's own server on the network. */
     val engine: String get() = prefs.getString("ai_engine", "builtin") ?: "builtin"
@@ -73,7 +85,84 @@ class AssistantEngine(private val ctx: Context) {
             You help by acting through your tools: opening apps, changing ALFA's look and settings, setting timers and alarms, opening system settings, and running quick IT checks (ping, DNS, SSL, network, device status, Wake-on-LAN). $name is an IT professional, so technical answers are welcome.
             When a request maps to a tool, call the tool rather than describing how to do it. Only call a tool that clearly matches what was asked; never substitute an unrelated one. If the user is chatting or asking a question, just answer it yourself in conversation. Never invent details the user did not give (names, numbers, Wi-Fi names, passwords, links, message text): ask for them instead; only search the web when they explicitly ask you to search. Do several steps in one go when asked. If no tool can do what was asked, say so plainly in one sentence and suggest the closest option.
             Reply briefly, one to three short sentences, in plain text without markdown, because replies are shown in a small panel and read aloud. After acting, confirm what you did.
-        """.trimIndent()
+        """.trimIndent().let { base ->
+            val mem = AssistantMemory.promptBlock(ctx, name)
+            if (mem.isEmpty()) base else "$base\n\n$mem"
+        }
+    }
+
+    // ---------------- context window ----------------
+
+    /** Tokens kept free for the model's answer. */
+    private val replyReserve = 1024
+    /** Older turns beyond this are dropped from the saved chat file too. */
+    private val maxSavedTurns = 60
+
+    /** Rough token count (~3.5 characters per token); only used to decide what fits. */
+    private fun est(s: String) = (s.length * 2 + 6) / 7
+
+    /** History split into turns that each start at a user message, so tool calls stay with their results. */
+    private fun turns(): List<IntRange> {
+        val starts = (0 until history.length()).filter { history.optJSONObject(it)?.optString("role") == "user" }
+        return starts.mapIndexed { i, s -> s until (starts.getOrNull(i + 1) ?: history.length()) }
+    }
+
+    /**
+     * The newest turns that fit in [budget] tokens. The current turn is always kept. Sending the whole
+     * history used to overflow the model's context after a few exchanges, which llama-server rejects
+     * (the "HTTP 500" error).
+     */
+    private fun fitHistory(budget: Int): JSONArray {
+        val kept = ArrayDeque<IntRange>()
+        var used = 0
+        for (t in turns().asReversed()) {
+            val cost = t.sumOf { est(history.get(it).toString()) }
+            if (kept.isNotEmpty() && used + cost > budget) break
+            kept.addFirst(t)
+            used += cost
+        }
+        val out = JSONArray()
+        for (t in kept) for (i in t) out.put(history.get(i))
+        return out
+    }
+
+    private fun dropOldTurns() {
+        val t = turns()
+        if (t.size <= maxSavedTurns) return
+        repeat(t[t.size - maxSavedTurns].first) { history.remove(0) }
+    }
+
+    private fun isContextError(code: Int, body: String): Boolean {
+        val b = body.lowercase(Locale.ROOT)
+        return (code == 400 || code == 500 || code == 413) &&
+            (b.contains("context") || b.contains("too long") || b.contains("exceed") || b.contains("n_ctx") || b.contains("tokens"))
+    }
+
+    // ---------------- conversations ----------------
+
+    /** Starts a new, empty chat (the previous one stays in the history list). */
+    fun newChat() {
+        recent.clear()
+        contextUsed = 0
+        chat = ChatStore.newChat()
+        ChatStore.setOpen(ctx, null)
+    }
+
+    /** Reopens a saved chat. */
+    fun open(id: String): Boolean {
+        val c = ChatStore.load(ctx, id) ?: return false
+        recent.clear()
+        contextUsed = 0
+        chat = c
+        ChatStore.setOpen(ctx, id)
+        return true
+    }
+
+    private fun persist(firstUserText: String) {
+        if (chat.title.isBlank()) chat.title = firstUserText.lineSequence().first().take(60)
+        chat.updated = System.currentTimeMillis()
+        dropOldTurns()
+        try { ChatStore.save(ctx, chat) } catch (e: Exception) { /* storage full: keep chatting */ }
     }
 
     private fun timeNote(): String =
@@ -103,11 +192,18 @@ class AssistantEngine(private val ctx: Context) {
         val intent = recent.joinToString(" ")
         val offered = AssistantTools.relevant(intent)
         history.put(JSONObject().put("role", "user").put("content", "$text\n\n(${timeNote()})"))
-        repeat(8) {
-            val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", systemPrompt()))
-            for (i in 0 until history.length()) msgs.put(history.get(i))
+        val system = systemPrompt()
+        val toolJson = if (offered.isNotEmpty()) tools(offered) else null
+        val fixed = est(system) + (toolJson?.let { est(it.toString()) } ?: 0)
+        var shrink = 1.0
+        var steps = 0
+        while (steps < 8) {
+            val budget = ((contextSize - fixed - replyReserve) * shrink).toInt().coerceAtLeast(256)
+            val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+            val fitted = fitHistory(budget)
+            for (i in 0 until fitted.length()) msgs.put(fitted.get(i))
             val body = JSONObject().put("model", modelName).put("messages", msgs).put("stream", false)
-            if (offered.isNotEmpty()) body.put("tools", tools(offered))   // no tools = just talk
+            if (toolJson != null) body.put("tools", toolJson)   // no tools = just talk
             val c = URL("$base/chat/completions").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.connectTimeout = 10000
@@ -125,16 +221,35 @@ class AssistantEngine(private val ctx: Context) {
                 c.disconnect()
             }
             if (code !in 200..299) {
-                val hint = if (txt.contains("does not support tools", true) || txt.contains("tool", true) && code == 400)
-                    " (this model may not support tool calling; try llama3.1, qwen2.5 or mistral-nemo)" else ""
-                throw RuntimeException("Server returned HTTP $code$hint: ${txt.take(160)}")
+                // The conversation no longer fits: send less history and try again.
+                if (isContextError(code, txt) && shrink > 0.15 && fitted.length() > 1) {
+                    shrink /= 2
+                    continue
+                }
+                val hint = when {
+                    isContextError(code, txt) ->
+                        " (the message is too long for this model's context window; start a new chat or pick a larger context in ALFA OS Settings)"
+                    txt.contains("does not support tools", true) || txt.contains("tool", true) && code == 400 ->
+                        " (this model may not support tool calling; try llama3.1, qwen2.5 or mistral-nemo)"
+                    else -> ""
+                }
+                val log = if (builtin) LocalLlm.logText().lines().filter { it.isNotBlank() }.takeLast(2).joinToString(" ") else ""
+                throw RuntimeException("Server returned HTTP $code$hint: ${txt.take(160)}" + if (log.isNotEmpty()) "\nEngine: ${log.take(200)}" else "")
             }
+            steps++
             if (builtin) LocalLlm.touch()
-            val msg = JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-            // some servers send content: null alongside tool calls; keep the turn as-is
+            val resp = JSONObject(txt)
+            resp.optJSONObject("usage")?.let { u ->
+                val total = u.optInt("total_tokens", u.optInt("prompt_tokens") + u.optInt("completion_tokens"))
+                if (total > 0) contextUsed = total
+            }
+            val msg = resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+            // Some servers send content: null alongside tool calls; chat templates choke on null later.
+            if (msg.isNull("content")) msg.put("content", "")
             history.put(msg)
             val calls = msg.optJSONArray("tool_calls")
             if (calls == null || calls.length() == 0) {
+                persist(text)
                 return msg.optString("content", "").let { if (it == "null") "" else it }.trim().ifEmpty { "Done." }
             }
             for (i in 0 until calls.length()) {
@@ -152,12 +267,14 @@ class AssistantEngine(private val ctx: Context) {
                     history.put(JSONObject().put("role", "tool").put("tool_call_id", call.optString("id"))
                         .put("name", fn.getString("name")).put("content", "Not done yet. Asked the user: $q"))
                     history.put(JSONObject().put("role", "assistant").put("content", q))
+                    persist(text)
                     return q
                 }
                 history.put(JSONObject().put("role", "tool").put("tool_call_id", call.optString("id"))
                     .put("name", fn.getString("name")).put("content", out))
             }
         }
+        persist(text)
         return "I stopped after several steps. Tell me if you want me to continue."
     }
 
@@ -191,11 +308,9 @@ class AssistantEngine(private val ctx: Context) {
         "ssl_check" -> "Checking SSL for ${a.optString("host")}"
         "wake_device" -> "Waking ${a.optString("name")}"
         "web_search" -> "Searching “${a.optString("query")}”"
+        "remember" -> "Remembered"
         else -> name.replace('_', ' ')
     }
 
-    fun reset() {
-        recent.clear()
-        while (history.length() > 0) history.remove(0)
-    }
+    fun reset() = newChat()
 }
