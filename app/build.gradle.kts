@@ -46,9 +46,22 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    packaging {
+        resources {
+            // duplicate metadata from the Provider SDK's Jackson / OkHttp dependencies
+            excludes += setOf(
+                "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*",
+                "META-INF/*.kotlin_module", "META-INF/versions/**", "META-INF/INDEX.LIST",
+                "META-INF/FastDoubleParser-*", "META-INF/io.netty.versions.properties",
+            )
+        }
+    }
 }
 
 dependencies {
     // QR code encoding (pure Java, no Android deps)
     implementation("com.google.zxing:core:3.5.3")
+    // ALFA Assistant: official Provider SDK (AI)
+    implementation("com.provider:provider-java:2.34.0")
 }

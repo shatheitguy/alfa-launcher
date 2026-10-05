@@ -144,6 +144,7 @@ class MainActivity : Activity() {
     private var iconStyle = IconStyler.NEON
     private var styleJob = 0
     private var lastCloneShowAll = false
+    private var lastLayoutKey = ""
     private var tickCount = 0
 
     // app changes in ANY profile (main, work, dual/clone apps)
@@ -217,6 +218,13 @@ class MainActivity : Activity() {
         avatar.clipToOutline = true
         findViewById<View>(R.id.profileRow).setOnClickListener { openSettings() }
         findViewById<View>(R.id.settingsButton).setOnClickListener { openSettings() }
+        findViewById<TextView>(R.id.assistantButton).apply {
+            setOnClickListener { openAssistant(false) }
+            setOnLongClickListener {
+                if (prefs.getBoolean("haptics", true)) it.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                openAssistant(true); true
+            }
+        }
 
         galaxyStage.onTransform = { z, tx, ty ->
             galaxyView.setDepth(tx, ty)
@@ -732,6 +740,13 @@ class MainActivity : Activity() {
 
     // ---------------- settings ----------------
 
+    private fun openAssistant(voice: Boolean) {
+        if (galaxy.visibility == View.VISIBLE) closeGalaxy(false)
+        startSafe(Intent(this, AssistantActivity::class.java)
+            .putExtra(AssistantActivity.EXTRA_VOICE, voice)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     private fun openSettings() {
         if (galaxy.visibility == View.VISIBLE) closeGalaxy(false)
         startSafe(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -757,6 +772,13 @@ class MainActivity : Activity() {
             lastCloneShowAll = cloneAll
             if (rawApps.isNotEmpty()) loadApps()
         }
+        // orbit / dock may have been edited elsewhere (e.g. by ALFA Assistant)
+        val layoutKey = (prefs.getString("orbit", "") ?: "") + "#" + (prefs.getString("dock", "") ?: "")
+        if (layoutKey != lastLayoutKey) {
+            lastLayoutKey = layoutKey
+            if (allApps.isNotEmpty() && prefs.contains("orbit")) refreshHome()
+        }
+        findViewById<TextView>(R.id.assistantButton).setTextColor(accent)
         // "Reset orbit & dock" clears these; rebuild the defaults
         if (!prefs.contains("orbit") && allApps.isNotEmpty()) {
             initDefaults()
