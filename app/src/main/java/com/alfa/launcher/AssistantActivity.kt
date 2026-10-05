@@ -112,17 +112,12 @@ class AssistantActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun providerLine(): String {
-        val p = getSharedPreferences("alfa", MODE_PRIVATE)
-        return if (engine.provider == "ai")
-            "AI · " + (p.getString("ai_ai_model", "")?.ifBlank { null } ?: "ai-opus-5-5").uppercase(Locale.US)
-        else "OWN SERVER · " + (p.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1").uppercase(Locale.US)
-    }
+    private fun providerLine(): String = "LOCAL AI · " + engine.modelName.uppercase(Locale.US)
 
     private fun greet() {
         if (!engine.configured()) {
-            bubble("Hi! Before I can help, connect me to an AI in ⚙ ALFA OS Settings → ALFA Assistant: " +
-                "paste a AI API key, or point me at your own server (Ollama or any OpenAI-compatible URL).", false)
+            bubble("Hi! Before I can help, connect me to your local AI in ⚙ ALFA OS Settings → ALFA Assistant: " +
+                "the address of your Ollama / LM Studio / llama.cpp server (any OpenAI-compatible API).", false)
             list.addView(pill("Open settings", true) {
                 startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
@@ -150,16 +145,11 @@ class AssistantActivity : Activity() {
                 engine.send(text, object : AssistantEngine.Listener {
                     override fun onAction(label: String) { main.post { chip(label) } }
                 })
-            } catch (e: com.provider.errors.UnauthorizedException) {
-                "That AI API key was rejected. Check it in ALFA OS Settings → ALFA Assistant."
-            } catch (e: com.provider.errors.RateLimitException) {
-                "AI is rate-limiting this key right now. Try again in a moment."
-            } catch (e: com.provider.errors.ProviderServiceException) {
-                "AI returned an error (${e.statusCode()}): ${e.message}"
-            } catch (e: com.provider.errors.ProviderIoException) {
-                "Couldn't reach AI. Check the internet connection."
             } catch (e: java.net.ConnectException) {
-                "Couldn't reach your AI server. Check the URL and that it's running and reachable from the phone."
+                "Couldn't reach your AI server. Check the URL, that it's running, and that it listens on the network " +
+                    "(for Ollama on a PC: set OLLAMA_HOST=0.0.0.0)."
+            } catch (e: java.net.SocketTimeoutException) {
+                "Your AI server took too long to answer. A big model may still be loading; try again."
             } catch (e: Exception) {
                 "Something went wrong: ${e.message ?: e.javaClass.simpleName}"
             }
