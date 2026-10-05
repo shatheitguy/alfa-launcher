@@ -70,10 +70,15 @@ class AssistantActivity : Activity() {
         status = tv("", 10f, dim, mono = true).apply { letterSpacing = 0.12f }
         titles.addView(status)
         head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(tv("☰", 19f, dim).apply {
+            setPadding(dp(14), dp(8), dp(6), dp(8))
+            contentDescription = "Chat history"
+            setOnClickListener { if (!busy) showHistory() }
+        })
         head.addView(tv("⟲", 20f, dim).apply {
-            setPadding(dp(14), dp(8), dp(4), dp(8))
+            setPadding(dp(10), dp(8), dp(4), dp(8))
             contentDescription = "New chat"
-            setOnClickListener { engine.reset(); list.removeAllViews(); showEmpty() }
+            setOnClickListener { if (!busy) { engine.newChat(); list.removeAllViews(); empty = null; showEmpty(); refreshStatus() } }
         })
         col.addView(head)
         col.addView(View(this).apply { setBackgroundColor(Color.argb(22, 255, 255, 255)) },
@@ -118,7 +123,7 @@ class AssistantActivity : Activity() {
 
         setContentView(root)
         refreshStatus()
-        showEmpty()
+        if (!renderChat()) showEmpty()
         if (intent.getBooleanExtra(EXTRA_VOICE, false)) main.postDelayed({ startVoice() }, 250)
     }
 
@@ -140,8 +145,69 @@ class AssistantActivity : Activity() {
     private fun refreshStatus() {
         val ready = engine.configured()
         val where = if (engine.engine == "builtin") "ON-DEVICE" else "LOCAL SERVER"
-        status.text = if (ready) "● $where · ${engine.modelName.uppercase(Locale.US)}" else "○ NOT SET UP"
+        val used = engine.contextUsed
+        val ctxNote = if (ready && used > 0) " · ${k(used)}/${k(engine.contextSize)} CTX" else ""
+        status.text = if (ready) "● $where · ${engine.modelName.uppercase(Locale.US)}$ctxNote" else "○ NOT SET UP"
         status.setTextColor(if (ready) accent else dim)
+    }
+
+    private fun k(tokens: Int) = if (tokens >= 1000) String.format(Locale.US, "%.1fK", tokens / 1000f).replace(".0K", "K") else tokens.toString()
+
+    // ---------------- saved chats ----------------
+
+    /** Shows the open chat's messages; false when there is nothing to show. */
+    private fun renderChat(): Boolean {
+        val h = engine.chat.history
+        var shown = 0
+        for (i in 0 until h.length()) {
+            val m = h.optJSONObject(i) ?: continue
+            val content = m.optString("content", "").let { if (it == "null") "" else it }
+            when (m.optString("role")) {
+                "user" -> {
+                    // drop the "(Current local time: …)" note added for the model
+                    val text = content.replace(Regex("\\n\\n\\(Current local time:[^)]*\\)\\s*$"), "").trim()
+                    if (text.isNotEmpty()) { userBubble(text); shown++ }
+                }
+                "assistant" -> {
+                    val calls = m.optJSONArray("tool_calls")
+                    if (content.isNotBlank() && (calls == null || calls.length() == 0)) {
+                        val turn = assistantRow()
+                        turn.text.text = content.trim()
+                        turn.text.visibility = View.VISIBLE
+                        shown++
+                    }
+                }
+            }
+        }
+        if (shown > 0) scrollDown()
+        return shown > 0
+    }
+
+    private fun showHistory() {
+        val chats = ChatStore.list(this)
+        if (chats.isEmpty()) { toast("No saved chats yet"); return }
+        val fmt = java.text.SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
+        val labels = chats.map { (it.title.ifBlank { "Untitled chat" }) + "\n" + fmt.format(java.util.Date(it.updated)) }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Chat history")
+            .setItems(labels.toTypedArray()) { _, i ->
+                if (engine.open(chats[i].id)) {
+                    list.removeAllViews(); empty = null
+                    if (!renderChat()) showEmpty()
+                    refreshStatus()
+                }
+            }
+            .setNeutralButton("Delete all") { _, _ ->
+                android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setMessage("Delete all ${chats.size} saved chats? This can't be undone.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        ChatStore.deleteAll(this)
+                        engine.newChat(); list.removeAllViews(); empty = null; showEmpty(); refreshStatus()
+                    }
+                    .setNegativeButton("Cancel", null).show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     // ---------------- empty state ----------------

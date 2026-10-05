@@ -20,7 +20,36 @@ object LocalLlm {
 
     const val PORT = 8765
     val BASE = "http://127.0.0.1:$PORT"
-    private const val IDLE_STOP_MS = 15 * 60_000L
+
+    /** How long the model stays in RAM after the last message, in minutes; -1 = until stopped. */
+    val KEEP_OPTIONS = listOf(30, 120, 240, -1)
+    const val DEFAULT_KEEP_MIN = 240
+
+    /** Context window sizes offered (tokens). Bigger remembers more of the chat but uses more RAM. */
+    val CONTEXT_OPTIONS = listOf(4096, 8192, 16384, 32768)
+    const val DEFAULT_CONTEXT = 8192
+
+    fun keepMinutes(c: Context) = prefs(c).getInt("llm_keep_min", DEFAULT_KEEP_MIN)
+    fun setKeepMinutes(c: Context, min: Int) {
+        prefs(c).edit().putInt("llm_keep_min", min).apply()
+        idleStopMs = if (min < 0) -1L else min * 60_000L
+    }
+
+    fun contextSize(c: Context) = prefs(c).getInt("llm_ctx", DEFAULT_CONTEXT)
+    fun setContextSize(c: Context, tokens: Int) {
+        prefs(c).edit().putInt("llm_ctx", tokens).apply()
+        if (isRunning() && runningContext != tokens) stop()   // restarts with the new size on next use
+    }
+
+    fun keepLabel(min: Int) = when {
+        min < 0 -> "until you stop it"
+        min >= 60 -> "${min / 60} h"
+        else -> "$min min"
+    }
+
+    @Volatile private var idleStopMs = DEFAULT_KEEP_MIN * 60_000L
+    @Volatile var runningContext = 0
+        private set
 
     class Model(val id: String, val name: String, val sizeMb: Int, val url: String, val note: String) {
         val file get() = "$id.gguf"
@@ -150,31 +179,36 @@ object LocalLlm {
     private val idleCheck = object : Runnable {
         override fun run() {
             if (!isRunning()) return
-            if (System.currentTimeMillis() - lastUse > IDLE_STOP_MS) { addLog("[alfa] idle, stopping to free memory"); stop(); return }
+            val limit = idleStopMs
+            if (limit > 0 && System.currentTimeMillis() - lastUse > limit) { addLog("[alfa] idle, stopping to free memory"); stop(); return }
             main.postDelayed(this, 60_000L)
         }
     }
 
     @Synchronized
     fun start(c: Context, file: String) {
-        if (isRunning() && runningModel == file) return
+        val ctxSize = contextSize(c)
+        if (isRunning() && runningModel == file && runningContext == ctxSize) return
         stop()
+        val keep = keepMinutes(c)
+        idleStopMs = if (keep < 0) -1L else keep * 60_000L
         val bin = binary(c)
         if (!bin.exists()) throw IllegalStateException("The on-device AI engine isn't available for this phone (needs 64-bit ARM).")
         val model = File(dir(c), file)
         if (!model.exists()) throw IllegalStateException("Model $file isn't downloaded.")
         val threads = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
         val cmd = listOf(bin.absolutePath, "-m", model.absolutePath, "--host", "127.0.0.1", "--port", PORT.toString(),
-            "-c", "8192", "-t", threads.toString(), "-np", "1", "--jinja")
+            "-c", ctxSize.toString(), "-t", threads.toString(), "-np", "1", "--jinja")
         addLog("[alfa] starting: ${cmd.drop(1).joinToString(" ")}")
         val p = ProcessBuilder(cmd).redirectErrorStream(true).directory(c.filesDir).start()
         process = p
         runningModel = file
+        runningContext = ctxSize
         lastUse = System.currentTimeMillis()
         Thread {
             try { p.inputStream.bufferedReader().forEachLine { addLog(it) } } catch (e: Exception) {}
             addLog("[alfa] server exited (${try { p.exitValue() } catch (e: Exception) { "?" }})")
-            if (process === p) { process = null; runningModel = null }
+            if (process === p) { process = null; runningModel = null; runningContext = 0 }
         }.apply { isDaemon = true }.start()
         main.removeCallbacks(idleCheck)
         main.postDelayed(idleCheck, 60_000L)
@@ -185,6 +219,7 @@ object LocalLlm {
         process?.destroy()
         process = null
         runningModel = null
+        runningContext = 0
         main.removeCallbacks(idleCheck)
     }
 
@@ -203,7 +238,7 @@ object LocalLlm {
         lastUse = System.currentTimeMillis()
         val file = selected(c) ?: installed(c).firstOrNull()?.name
             ?: throw IllegalStateException("No on-device model yet. Download one in ALFA OS Settings → ALFA Assistant.")
-        if (isRunning() && runningModel == file && healthy()) return
+        if (isRunning() && runningModel == file && runningContext == contextSize(c) && healthy()) return
         onStarting()
         start(c, file)
         val deadline = System.currentTimeMillis() + 180_000L
