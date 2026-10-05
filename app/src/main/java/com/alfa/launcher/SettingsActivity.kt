@@ -30,6 +30,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -507,23 +508,30 @@ class SettingsActivity : Activity() {
     /** ALFA Assistant: the user's own local AI server (OpenAI-compatible) + voice options. */
     private fun assistantSection() {
         val card = section("ALFA ASSISTANT", "\u2726")
-        val url = prefs.getString("ai_server_url", "") ?: ""
-        actionRow(card, "Local AI server", url.ifBlank { "Not set \u2014 e.g. http://192.168.1.10:11434 (Ollama on your PC)" },
-            if (url.isBlank()) "Add" else null) {
-            editText("Server address (OpenAI-compatible)", "http://192.168.1.10:11434", url) {
-                prefs.edit().putString("ai_server_url", it.trim()).apply(); build()
+        val engine = prefs.getString("ai_engine", "builtin") ?: "builtin"
+        choiceRow(card, "AI engine", listOf("On this phone" to "builtin", "Local server" to "server"), engine) {
+            prefs.edit().putString("ai_engine", it).apply(); build()
+        }
+        line(card)
+        if (engine == "builtin") builtinRows(card) else {
+            val url = prefs.getString("ai_server_url", "") ?: ""
+            actionRow(card, "Local AI server", url.ifBlank { "Not set \u2014 e.g. http://192.168.1.10:11434 (Ollama on your PC)" },
+                if (url.isBlank()) "Add" else null) {
+                editText("Server address (OpenAI-compatible)", "http://192.168.1.10:11434", url) {
+                    prefs.edit().putString("ai_server_url", it.trim()).apply(); build()
+                }
             }
+            line(card)
+            val model = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
+            actionRow(card, "Model", "$model \u2014 tap to pick from your server", null) { pickModel() }
+            line(card)
+            val skey = prefs.getString("ai_server_key", "") ?: ""
+            actionRow(card, "API key (optional)", if (skey.isBlank()) "None \u2014 only if your server requires one" else "\u2022\u2022\u2022\u2022 " + skey.takeLast(4), null) {
+                editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
+            }
+            line(card)
+            actionRow(card, "Test connection", "Checks the server and lists its models", null) { testServer() }
         }
-        line(card)
-        val model = prefs.getString("ai_server_model", "")?.ifBlank { null } ?: "llama3.1"
-        actionRow(card, "Model", "$model \u2014 tap to pick from your server", null) { pickModel() }
-        line(card)
-        val skey = prefs.getString("ai_server_key", "") ?: ""
-        actionRow(card, "API key (optional)", if (skey.isBlank()) "None \u2014 only if your server requires one" else "\u2022\u2022\u2022\u2022 " + skey.takeLast(4), null) {
-            editText("Server API key", "optional", skey, secret = true) { prefs.edit().putString("ai_server_key", it.trim()).apply(); build() }
-        }
-        line(card)
-        actionRow(card, "Test connection", "Checks the server and lists its models", null) { testServer() }
         line(card)
         toggleRow(card, "Wake word \u201CALFA\u201D", "Say \u201CALFA\u201D while the home screen is showing. Uses the microphone on-device while on.",
             "wake_word", false) { on ->
@@ -538,6 +546,100 @@ class SettingsActivity : Activity() {
         actionRow(card, "Open ALFA Assistant", "Tap \u2726 on the home screen to type, long-press it to talk", null) {
             startActivity(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
+    }
+
+    // ---------- built-in on-device AI ----------
+
+    private val progressTick = Runnable { if (!isDestroyed) build() }
+
+    private fun builtinRows(card: LinearLayout) {
+        if (!LocalLlm.supported(this)) {
+            actionRow(card, "Not available on this phone", "The on-device engine needs a 64-bit ARM phone", null, showChevron = false) {}
+            return
+        }
+        val running = LocalLlm.isRunning()
+        val sel = LocalLlm.selected(this) ?: LocalLlm.installed(this).firstOrNull()?.name
+        actionRow(card, if (running) "On-device AI running" else "On-device AI stopped",
+            if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} · 127.0.0.1:${LocalLlm.PORT} · stops itself after 15 min idle"
+            else "Starts automatically when you ask ALFA something", if (running) "Stop" else if (sel != null) "Start" else null) {
+            if (running) { LocalLlm.stop(); build() }
+            else if (sel != null) {
+                toast("Loading model…")
+                io.execute {
+                    val err = try { LocalLlm.ensureRunning(this); null } catch (e: Exception) { e.message }
+                    main.post { if (!isDestroyed) { toast(err ?: "On-device AI is ready"); build() } }
+                }
+            }
+        }
+        var downloading = false
+        LocalLlm.CATALOG.forEach { m ->
+            line(card)
+            val pct = LocalLlm.progress(this, m.file)
+            val have = LocalLlm.isInstalled(this, m.file)
+            val inUse = have && sel == m.file
+            if (pct >= 0) downloading = true
+            val sub = when {
+                pct >= 0 -> "Downloading… $pct%  ·  tap to cancel"
+                inUse -> "✓ In use · ${m.note}"
+                have -> "Downloaded · ${m.note}  ·  long-press to delete"
+                else -> "${String.format(Locale.US, "%.1f", m.sizeMb / 1024f)} GB · ${m.note}"
+            }
+            val badge = when { pct >= 0 -> null; inUse -> null; have -> "Use"; else -> "Download" }
+            actionRow(card, m.name, sub, badge) {
+                when {
+                    pct >= 0 -> { LocalLlm.cancelDownload(this, m.file); build() }
+                    have -> { LocalLlm.select(this, m.file); build() }
+                    else -> confirmDownload(m.name, m.sizeMb) { LocalLlm.download(this, m.url, m.file); LocalLlm.select(this, m.file); build() }
+                }
+            }
+            if (have) (card.getChildAt(card.childCount - 1)).setOnLongClickListener {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setMessage("Delete ${m.name} from this phone? (${m.sizeMb} MB)")
+                    .setPositiveButton("Delete") { _, _ -> LocalLlm.delete(this, m.file); build() }
+                    .setNegativeButton("Cancel", null).show()
+                true
+            }
+        }
+        // models added by URL
+        LocalLlm.installed(this).filter { f -> LocalLlm.CATALOG.none { it.file == f.name } }.forEach { f ->
+            line(card)
+            val inUse = sel == f.name
+            actionRow(card, f.name.removeSuffix(".gguf"), (if (inUse) "✓ In use · " else "") +
+                "${f.length() / 1_048_576} MB · custom · long-press to delete", if (inUse) null else "Use") {
+                LocalLlm.select(this, f.name); build()
+            }
+            card.getChildAt(card.childCount - 1).setOnLongClickListener {
+                LocalLlm.delete(this, f.name); build(); true
+            }
+        }
+        line(card)
+        actionRow(card, "Add model from URL", "Any GGUF chat model (Hugging Face …/resolve/main/model.gguf)", null) {
+            editText("GGUF download URL", "https://huggingface.co/…/resolve/main/model.gguf", "") { url ->
+                val u = url.trim()
+                if (!u.startsWith("http") || !u.substringBefore('?').endsWith(".gguf", true)) { toast("That must be a direct link to a .gguf file"); return@editText }
+                val name = u.substringBefore('?').substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
+                prefs.edit().putString("llm_custom_file", name).apply()
+                LocalLlm.download(this, u, name); LocalLlm.select(this, name); build()
+            }
+        }
+        line(card)
+        actionRow(card, "Engine log", "llama.cpp server output, for troubleshooting", null) {
+            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("On-device AI log")
+                .setMessage(LocalLlm.logText().lines().takeLast(60).joinToString("\n").ifBlank { "Nothing yet." })
+                .setPositiveButton("OK", null).show()
+        }
+        main.removeCallbacks(progressTick)
+        if (downloading) main.postDelayed(progressTick, 1500)
+    }
+
+    private fun confirmDownload(name: String, mb: Int, go: () -> Unit) {
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Download $name?")
+            .setMessage("About ${String.format(Locale.US, "%.1f", mb / 1024f)} GB. Use Wi-Fi if you can. It runs fully offline on your phone afterwards; " +
+                "the first reply after starting takes a little while as the model loads into memory.")
+            .setPositiveButton("Download") { _, _ -> go() }
+            .setNegativeButton("Cancel", null).show()
     }
 
     @Deprecated("Deprecated in Java")

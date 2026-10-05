@@ -112,12 +112,13 @@ class AssistantActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun providerLine(): String = "LOCAL AI · " + engine.modelName.uppercase(Locale.US)
+    private fun providerLine(): String =
+        (if (engine.engine == "builtin") "ON-DEVICE AI · " else "LOCAL SERVER · ") + engine.modelName.uppercase(Locale.US)
 
     private fun greet() {
         if (!engine.configured()) {
-            bubble("Hi! Before I can help, connect me to your local AI in ⚙ ALFA OS Settings → ALFA Assistant: " +
-                "the address of your Ollama / LM Studio / llama.cpp server (any OpenAI-compatible API).", false)
+            bubble("Hi! I need an AI model first. In ⚙ ALFA OS Settings → ALFA Assistant, download a model to run " +
+                "right here on your phone (fully offline), or connect your own Ollama / LM Studio server.", false)
             list.addView(pill("Open settings", true) {
                 startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
