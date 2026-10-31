@@ -10,10 +10,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Built-in on-device AI. ALFA ships llama.cpp's `llama-server` (compiled for arm64 and packaged
+ * Built-in on-device AI. NoCap ships llama.cpp's `llama-server` (compiled for arm64 and packaged
  * as libllamaserver.so so Android extracts it to an executable location). This object downloads
  * GGUF models, starts the server on 127.0.0.1:[PORT] with the chosen model, and stops it after a
- * period of inactivity to give the RAM back. ALFA Assistant then talks to it like any
+ * period of inactivity to give the RAM back. NoCap Assistant then talks to it like any
  * OpenAI-compatible server, completely offline.
  */
 object LocalLlm {
@@ -141,7 +141,7 @@ object LocalLlm {
         val dm = c.getSystemService(DownloadManager::class.java) ?: throw IllegalStateException("no download manager")
         File(dir(c), file).delete()
         val req = DownloadManager.Request(Uri.parse(url))
-            .setTitle("ALFA AI model")
+            .setTitle("NoCap AI model")
             .setDescription(file)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setAllowedOverMetered(true)
@@ -180,7 +180,7 @@ object LocalLlm {
         override fun run() {
             if (!isRunning()) return
             val limit = idleStopMs
-            if (limit > 0 && System.currentTimeMillis() - lastUse > limit) { addLog("[alfa] idle, stopping to free memory"); stop(); return }
+            if (limit > 0 && System.currentTimeMillis() - lastUse > limit) { addLog("[nocap] idle, stopping to free memory"); stop(); return }
             main.postDelayed(this, 60_000L)
         }
     }
@@ -199,7 +199,7 @@ object LocalLlm {
         val threads = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
         val cmd = listOf(bin.absolutePath, "-m", model.absolutePath, "--host", "127.0.0.1", "--port", PORT.toString(),
             "-c", ctxSize.toString(), "-t", threads.toString(), "-np", "1", "--jinja")
-        addLog("[alfa] starting: ${cmd.drop(1).joinToString(" ")}")
+        addLog("[nocap] starting: ${cmd.drop(1).joinToString(" ")}")
         val p = ProcessBuilder(cmd).redirectErrorStream(true).directory(c.filesDir).start()
         process = p
         runningModel = file
@@ -207,7 +207,7 @@ object LocalLlm {
         lastUse = System.currentTimeMillis()
         Thread {
             try { p.inputStream.bufferedReader().forEachLine { addLog(it) } } catch (e: Exception) {}
-            addLog("[alfa] server exited (${try { p.exitValue() } catch (e: Exception) { "?" }})")
+            addLog("[nocap] server exited (${try { p.exitValue() } catch (e: Exception) { "?" }})")
             if (process === p) { process = null; runningModel = null; runningContext = 0 }
         }.apply { isDaemon = true }.start()
         main.removeCallbacks(idleCheck)
@@ -237,7 +237,7 @@ object LocalLlm {
     fun ensureRunning(c: Context, onStarting: () -> Unit = {}) {
         lastUse = System.currentTimeMillis()
         val file = selected(c) ?: installed(c).firstOrNull()?.name
-            ?: throw IllegalStateException("No on-device model yet. Download one in ALFA OS Settings → ALFA Assistant.")
+            ?: throw IllegalStateException("No on-device model yet. Download one in NoCap OS Settings → NoCap Assistant.")
         if (isRunning() && runningModel == file && runningContext == contextSize(c) && healthy()) return
         onStarting()
         start(c, file)

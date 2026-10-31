@@ -8,7 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 
-/** QR helpers shared by the QR tool and ALFA Assistant. */
+/** QR helpers shared by the QR tool and NoCap Assistant. */
 object QrUtil {
 
     fun render(content: String, size: Int = 1024): Bitmap {
@@ -31,13 +31,13 @@ object QrUtil {
         return "WIFI:T:$sec;S:${esc(ssid)};" + (if (sec != "nopass") "P:${esc(password)};" else "") + (if (hidden) "H:true;" else "") + ";"
     }
 
-    /** Android 10+: saves to Pictures/ALFA and returns the content Uri (null on older Android). */
+    /** Android 10+: saves to Pictures/NoCap and returns the content Uri (null on older Android). */
     fun save(c: Context, bmp: Bitmap, name: String): Uri? {
         if (Build.VERSION.SDK_INT < 29) return null
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name-${System.currentTimeMillis() / 1000}.png")
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ALFA")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/NoCap")
         }
         val uri = c.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
         c.contentResolver.openOutputStream(uri)?.use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }

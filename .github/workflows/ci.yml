@@ -1,0 +1,36 @@
+name: CI APK
+
+# Builds a debug-signed APK for every pull request and branch push and keeps it as a
+# workflow artifact. No signing secrets, no releases: those stay in build.yml (main only).
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk nocapos-launcher.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nocapos-launcher
+          path: nocapos-launcher.apk

@@ -204,7 +204,7 @@ class VoiceOverlay(private val act: Activity, private val onClosed: () -> Unit) 
         orb.state = VoiceOrbView.State.THINKING
         setStatus("THINKING")
         if (!engine.configured()) {
-            finish("Connect your local AI server first: ⚙ ALFA OS Settings → ALFA Assistant.")
+            finish("Connect your local AI server first: ⚙ NoCap OS Settings → NoCap Assistant.")
             return
         }
         worker.execute {

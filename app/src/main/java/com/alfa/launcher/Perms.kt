@@ -11,7 +11,7 @@ import android.provider.Settings
 /**
  * Runtime permissions that keep working after a denial. Android stops showing the prompt once
  * the user has said no (twice on Android 11+); asking again then fails silently, which left the
- * Assistant stuck at "I need access to your contacts". In that case ALFA explains and opens its
+ * Assistant stuck at "I need access to your contacts". In that case NoCap explains and opens its
  * own permission page instead.
  */
 object Perms {
@@ -25,8 +25,8 @@ object Perms {
         if (askedBefore && !a.shouldShowRequestPermissionRationale(perm)) {
             AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("Allow $what")
-                .setMessage("Android won't show the permission prompt for ALFA again. " +
-                    "Open ALFA's app settings, tap Permissions, and allow $what.")
+                .setMessage("Android won't show the permission prompt for NoCap again. " +
+                    "Open NoCap's app settings, tap Permissions, and allow $what.")
                 .setPositiveButton("Open settings") { _, _ -> openAppSettings(a) }
                 .setNegativeButton("Cancel", null)
                 .show()

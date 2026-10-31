@@ -75,7 +75,7 @@ class MainActivity : Activity() {
         private const val REQ_LOGO = 43
         private const val MAX_DOCK = 5
         val ACCENTS = listOf(
-            "Crimson" to "#FF2D3D",
+            "NoCap red" to "#FF2A2A",
             "Ice blue" to "#4DA3FF",
             "Mint" to "#3DDC97",
             "Amber" to "#FFB547",
@@ -133,6 +133,7 @@ class MainActivity : Activity() {
     private lateinit var profileName: TextView
     private lateinit var menuAnchor: View
     private var profilePreview: ImageView? = null
+    private lateinit var cloud: CloudPanel
 
     private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
     private val userManager by lazy { getSystemService(UserManager::class.java) }
@@ -212,6 +213,7 @@ class MainActivity : Activity() {
         greeting = findViewById(R.id.greeting)
         profileName = findViewById(R.id.profileName)
         menuAnchor = findViewById(R.id.menuAnchor)
+        cloud = CloudPanel(this, findViewById(R.id.cloudPanel))
 
         avatar.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
@@ -320,6 +322,16 @@ class MainActivity : Activity() {
         applySpin()
         applyHaptics()
         loadApps()
+
+        // linked phones keep their 15-minute heartbeat (KEEP: no-op when already scheduled)
+        io.execute { if (NoCapLink.isLinked(this)) HeartbeatWorker.schedule(this) }
+    }
+
+    /** First run: offer to link a NoCap server once (it stays reachable from Settings and the home panel). */
+    private fun maybeOfferPairing() {
+        if (prefs.getBoolean("pair_offered", false)) return
+        prefs.edit().putBoolean("pair_offered", true).apply()
+        if (!NoCapLink.isLinked(this)) startSafe(Intent(this, PairActivity::class.java))
     }
 
     override fun onResume() {
@@ -339,8 +351,10 @@ class MainActivity : Activity() {
             banner.visibility =
                 if (!isDefaultLauncher() && !prefs.getBoolean("banner_dismissed", false)) View.VISIBLE else View.GONE
             showUpdateChip()
+            cloud.refresh()
             handler.post(tick)
             resumeWake()
+            maybeOfferPairing()
         }
         resumed = true
         if (Updater.shouldAutoCheck(this)) {
@@ -372,15 +386,15 @@ class MainActivity : Activity() {
     override fun onPause() {
         handler.removeCallbacks(tick)
         resumed = false
-        // stop the wake-word loop as soon as ALFA isn't in front (the overlay can still finish a reply)
+        // stop the wake-word loop as soon as NoCap isn't in front (the overlay can still finish a reply)
         if (!voiceOverlay.isOpen) voiceOverlay.voice.stop()
         super.onPause()
     }
 
     // ---- clean return from Recents / other apps ----
     // On Android 10+ Recents is drawn by the phone's own launcher and fades out ON TOP of
-    // ALFA. With a transparent (wallpaper) background the two layouts mix for a moment.
-    // So: hide ALFA's layout while it's in the background, and fade it in once ALFA has
+    // NoCap. With a transparent (wallpaper) background the two layouts mix for a moment.
+    // So: hide NoCap's layout while it's in the background, and fade it in once NoCap has
     // window focus again, i.e. after the system Recents screen has gone.
     private var hiddenForReturn = false
     private val revealFallback = Runnable { revealHome() }
@@ -397,7 +411,7 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        // Start fading in the moment Android starts showing ALFA, i.e. *together* with the
+        // Start fading in the moment Android starts showing NoCap, i.e. *together* with the
         // system Recents fading out (a crossfade), instead of sitting fully drawn under it.
         if (hiddenForReturn) homeContent.postOnAnimation { revealHome() }
     }
@@ -419,6 +433,7 @@ class MainActivity : Activity() {
         unregisterReceiver(profileReceiver)
         launcherApps?.unregisterCallback(appsCallback)
         voiceOverlay.destroy()
+        cloud.destroy()
         handler.removeCallbacksAndMessages(null)
         io.shutdown()
         super.onDestroy()
@@ -546,7 +561,7 @@ class MainActivity : Activity() {
                 // fall back to the badge check
             }
         }
-        val probe = "ALFA"
+        val probe = "NoCap"
         return packageManager.getUserBadgedLabel(probe, user).toString() == probe
     }
 
@@ -768,7 +783,7 @@ class MainActivity : Activity() {
         startSafe(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    // ---------------- "ALFA" wake word ----------------
+    // ---------------- "NoCap" wake word ----------------
 
     private lateinit var voiceOverlay: VoiceOverlay
     private var resumed = false
@@ -776,7 +791,7 @@ class MainActivity : Activity() {
     private fun hasMic() = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
         android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    /** Listen for "ALFA" only while the home screen is in front and the option is on. */
+    /** Listen for "NoCap" only while the home screen is in front and the option is on. */
     private fun resumeWake() {
         if (resumed && !voiceOverlay.isOpen && prefs.getBoolean("wake_word", false) && hasMic() && VoiceListener.available(this)) {
             voiceOverlay.voice.startHotword()
@@ -788,7 +803,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_MIC) {
             if (grantResults.any { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) voiceOverlay.openAndListen()
-            else toast("ALFA needs microphone access for voice")
+            else toast("NoCap needs microphone access for voice")
         }
     }
 
@@ -797,7 +812,7 @@ class MainActivity : Activity() {
         startSafe(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    /** Re-reads everything ALFA OS Settings can change and applies what differs. */
+    /** Re-reads everything NoCap OS Settings can change and applies what differs. */
     private fun applySettings() {
         val newAccent = accentOf(this)
         val newStyle = prefs.getString("icon_style", IconStyler.NEON) ?: IconStyler.NEON
@@ -817,7 +832,7 @@ class MainActivity : Activity() {
             lastCloneShowAll = cloneAll
             if (rawApps.isNotEmpty()) loadApps()
         }
-        // orbit / dock may have been edited elsewhere (e.g. by ALFA Assistant)
+        // orbit / dock may have been edited elsewhere (e.g. by NoCap Assistant)
         val layoutKey = (prefs.getString("orbit", "") ?: "") + "#" + (prefs.getString("dock", "") ?: "")
         if (layoutKey != lastLayoutKey) {
             lastLayoutKey = layoutKey
@@ -894,7 +909,7 @@ class MainActivity : Activity() {
     }
 
     /**
-     * One wallpaper everywhere: if ALFA carbon is already the system wallpaper (or the user
+     * One wallpaper everywhere: if NoCap carbon is already the system wallpaper (or the user
      * chose their own), just show the system wallpaper. Only draw carbon ourselves while it
      * hasn't been applied to the system yet.
      */
@@ -916,6 +931,7 @@ class MainActivity : Activity() {
         galaxyHud.style = WallpaperSync.style(this)
         galaxyView.accent = accent
         galaxySearch.highlightColor = (accent and 0x00FFFFFF) or 0x66000000
+        cloud.accent = accent
         refreshProfile()
         if (::toolsIcon.isInitialized) {
             toolsIcon.setTextColor(accent)

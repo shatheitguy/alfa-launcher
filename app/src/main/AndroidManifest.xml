@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -8,18 +9,21 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
-    <!-- ALFA carbon is applied as the real system wallpaper (one wallpaper everywhere) -->
+    <!-- NoCap carbon is applied as the real system wallpaper (one wallpaper everywhere) -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
-    <!-- ALFA Assistant: set timers / alarms in the clock app -->
+    <!-- NoCap Assistant: set timers / alarms in the clock app -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
-    <!-- ALFA Assistant voice: "ALFA" wake word and voice commands (asked for only when you turn voice on) -->
+    <!-- NoCap Assistant voice: "NoCap" wake word and voice commands (asked for only when you turn voice on) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- ALFA Assistant: find people by name for WhatsApp / SMS / calls (asked for on first use) -->
+    <!-- NoCap Assistant: find people by name for WhatsApp / SMS / calls (asked for on first use) -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <!-- ALFA Assistant: send a text after the user taps Send on the message card in the chat -->
+    <!-- NoCap Assistant: send a text after the user taps Send on the message card in the chat -->
     <uses-permission android:name="android.permission.SEND_SMS" />
-    <!-- SEND_SMS would otherwise hide ALFA from phones/tablets without a SIM radio -->
+    <!-- SEND_SMS would otherwise hide NoCap from phones/tablets without a SIM radio -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- NoCap Cloud: scan the pairing QR (camera is asked for only when you tap Scan QR) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -28,7 +32,7 @@
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
-    <!-- self-update: ALFA installs its own new versions (user confirms each one) -->
+    <!-- self-update: NoCap OS installs its own new versions (user confirms each one) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
@@ -85,16 +89,16 @@
         <activity
             android:name=".ModelsActivity"
             android:exported="false"
-            android:label="ALFA Models"
+            android:label="NoCap Models"
             android:taskAffinity="com.alfa.launcher.settings"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Alfa.Tools" />
 
-        <!-- ALFA Assistant: own task so it shows in Recents and survives app switches -->
+        <!-- NoCap Assistant: own task so it shows in Recents and survives app switches -->
         <activity
             android:name=".AssistantActivity"
             android:exported="false"
-            android:label="ALFA Assistant"
+            android:label="NoCap Assistant"
             android:launchMode="singleTask"
             android:taskAffinity="com.alfa.launcher.assistant"
             android:excludeFromRecents="false"
@@ -108,7 +112,7 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
-            android:label="ALFA OS Settings"
+            android:label="NoCap OS Settings"
             android:launchMode="singleTask"
             android:taskAffinity="com.alfa.launcher.settings"
             android:excludeFromRecents="false"
@@ -126,5 +130,29 @@
             android:autoRemoveFromRecents="true"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Alfa.Tools"
-            android:windowSoftInputMode="adjustResize" />    </application>
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- NoCap Cloud: link this phone to a NoCap server (code, QR, or nocap://pair links) -->
+        <activity
+            android:name=".PairActivity"
+            android:exported="true"
+            android:label="Link NoCap server"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Alfa.Tools"
+            android:windowSoftInputMode="adjustResize|stateHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nocap" android:host="pair" />
+            </intent-filter>
+        </activity>
+
+        <!-- QR scanner: follow the phone's orientation instead of forcing landscape -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="android:screenOrientation" />
+    </application>
 </manifest>

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AlfaLauncher"
+rootProject.name = "NoCapOS"
 include(":app")
