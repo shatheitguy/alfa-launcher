@@ -7,7 +7,7 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import android.widget.Toast
 
-/** Receives PackageInstaller session results for ALFA's self-update. */
+/** Receives PackageInstaller session results for NoCap's self-update. */
 class InstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {

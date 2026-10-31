@@ -10,7 +10,7 @@ import android.view.View
 import android.view.WindowManager
 
 /**
- * Keeps one wallpaper for everything: the chosen ALFA style is rendered at screen size in
+ * Keeps one wallpaper for everything: the chosen NoCap style is rendered at screen size in
  * the accent colour and set as the real Android wallpaper, so the launcher, Recents and app
  * transitions all show the same image.
  */
@@ -28,7 +28,7 @@ object WallpaperSync {
 
     fun setStyle(ctx: Context, s: String) = prefs(ctx).edit().putString("wall_style", s).apply()
 
-    /** Is the system wallpaper currently this ALFA style in this accent? */
+    /** Is the system wallpaper currently this NoCap style in this accent? */
     fun isApplied(ctx: Context, accent: Int): Boolean {
         val p = prefs(ctx)
         return p.getBoolean("carbon_applied", false) &&
@@ -78,7 +78,7 @@ object WallpaperSync {
 
     fun deletePhoto(ctx: Context, name: String) { java.io.File(photosDir(ctx), name).delete() }
 
-    /** Blocking: copies a picked image into ALFA (scaled to about screen size). Returns its style id. */
+    /** Blocking: copies a picked image into NoCap (scaled to about screen size). Returns its style id. */
     fun importPhoto(ctx: Context, uri: android.net.Uri): String {
         val (sw, sh) = screenSize(ctx)
         val cr = ctx.contentResolver
@@ -96,7 +96,7 @@ object WallpaperSync {
         return HudBackground.PHOTO_PREFIX + name
     }
 
-    /** Blocking. Sets the current ALFA style as wallpaper on home (and lock screen if [lock]). */
+    /** Blocking. Sets the current NoCap style as wallpaper on home (and lock screen if [lock]). */
     fun applyCarbon(ctx: Context, accent: Int, lock: Boolean) {
         val style = style(ctx)
         val bmp = render(ctx, accent, style)

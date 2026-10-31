@@ -101,7 +101,7 @@ class ToolsActivity : Activity() {
         Tool(TOOL_HASH, "Hash / Base64", "MD5, SHA, CRC32, Base64"),
         Tool(TOOL_PASSWORD, "Password gen", "Strong random passwords"),
         Tool(TOOL_SHORTCUTS, "System panels", "Jump straight to settings"),
-        Tool(TOOL_UPDATE, "App update", "Get the latest ALFA build"),
+        Tool(TOOL_UPDATE, "App update", "Get the latest NoCap build"),
     )
 
     private val main = Handler(Looper.getMainLooper())
@@ -313,7 +313,7 @@ class ToolsActivity : Activity() {
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     private fun copy(s: String) {
-        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("ALFA", s))
+        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("NoCap", s))
         toast("Copied")
     }
 
@@ -329,7 +329,7 @@ class ToolsActivity : Activity() {
         current = null
         content.removeAllViews()
         scroll.scrollTo(0, 0)
-        header("IT Tools", "ALFA//TOOLKIT  ·  ${tools.size} MODULES", back = false)
+        header("IT Tools", "NOCAP//TOOLKIT  ·  ${tools.size} MODULES", back = false)
         grid(tools.mapIndexed { i, t -> tile(String.format(Locale.US, "%02d", i + 1), t.name, t.desc) { showTool(t.id) } })
     }
 
@@ -393,7 +393,7 @@ class ToolsActivity : Activity() {
         fun install(id: Long) {
             if (!Updater.canSelfInstall(this)) {
                 pendingInstall = id
-                progress.text = "${bar(1, 1)}  downloaded ✓\n\nAllow ALFA to install apps (one time), then come back — the install continues by itself."
+                progress.text = "${bar(1, 1)}  downloaded ✓\n\nAllow NoCap to install apps (one time), then come back — the install continues by itself."
                 setAction("Allow & install", true)
                 try { Updater.requestInstallPermission(this) } catch (e: Exception) { Updater.openDownloads(this) }
                 return
@@ -531,7 +531,7 @@ class ToolsActivity : Activity() {
             startSafe(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/${Updater.REPO}/releases")))
         }, top = 8)
 
-        add(tv("Updates come from github.com/${Updater.REPO}. ALFA downloads and installs them itself; you just confirm Update. " +
+        add(tv("Updates come from github.com/${Updater.REPO}. NoCap downloads and installs them itself; you just confirm Update. " +
             "It is signed with the same key, so your pins, dock and settings are kept.",
             11f, dimmer), 16)
 
@@ -643,7 +643,7 @@ class ToolsActivity : Activity() {
             connectTimeout = 6000
             readTimeout = 8000
             useCaches = false
-            setRequestProperty("User-Agent", "ALFA-Launcher")
+            setRequestProperty("User-Agent", "NoCap-OS")
         }
 
     private fun runSpeedTest(big: TextView, phaseTv: TextView, out: TextView, done: () -> Unit) {
@@ -1082,7 +1082,7 @@ class ToolsActivity : Activity() {
     // ---------- QR generator ----------
 
     private var qrBitmap: android.graphics.Bitmap? = null
-    private var qrName = "alfa-qr"
+    private var qrName = "nocap-qr"
 
     private fun qrTool() {
         var type = "wifi"
@@ -1223,7 +1223,7 @@ class ToolsActivity : Activity() {
         return bos.toByteArray()
     }
 
-    /** Android 10+: straight into Pictures/ALFA. Older: let the user pick where to save. */
+    /** Android 10+: straight into Pictures/NoCap. Older: let the user pick where to save. */
     @Suppress("DEPRECATION")
     private fun saveQr(bmp: android.graphics.Bitmap): android.net.Uri? {
         val name = "$qrName-${System.currentTimeMillis() / 1000}.png"
@@ -1232,12 +1232,12 @@ class ToolsActivity : Activity() {
                 val values = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
                     put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ALFA")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/NoCap")
                 }
                 val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                     ?: throw java.io.IOException("no media store")
                 contentResolver.openOutputStream(uri)?.use { it.write(pngBytes(bmp)) }
-                toast("Saved to Pictures/ALFA")
+                toast("Saved to Pictures/NoCap")
                 uri
             } catch (e: Exception) {
                 toast("Couldn't save: ${e.message}")

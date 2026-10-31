@@ -7,7 +7,7 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Saved ALFA Assistant conversations: one JSON file per chat in the app's private storage,
+ * Saved NoCap Assistant conversations: one JSON file per chat in the app's private storage,
  * so chats survive restarts and can be reopened from the history list.
  */
 object ChatStore {
@@ -67,7 +67,7 @@ object ChatStore {
     }
 }
 
-/** Long-term memory: short facts the user asked ALFA to remember, included in every chat. */
+/** Long-term memory: short facts the user asked NoCap to remember, included in every chat. */
 object AssistantMemory {
 
     private const val KEY = "ai_memory"

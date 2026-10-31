@@ -92,10 +92,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: ALFA Launcher v1.0.${{ github.run_number }}
+          name: NoCap OS v1.0.${{ github.run_number }}
           files: alfa-launcher.apk
           make_latest: true
           body: |
             ${{ github.event.head_commit.message }}
 
-            Install `alfa-launcher.apk`, or update from inside the launcher: IT Tools → App update.
+            Install `alfa-launcher.apk` (the NoCap OS APK keeps this file name so older installs can still update), or update from inside the launcher: IT Tools → App update.
