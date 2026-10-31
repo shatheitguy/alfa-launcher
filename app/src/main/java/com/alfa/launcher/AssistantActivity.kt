@@ -27,7 +27,7 @@ import android.widget.Toast
 import java.util.Locale
 import java.util.concurrent.Executors
 
-/** ALFA Assistant chat: clean, quiet layout; replies glide in; QR codes show inline. */
+/** NoCap Assistant chat: clean, quiet layout; replies glide in; QR codes show inline. */
 class AssistantActivity : Activity() {
 
     companion object {
@@ -68,7 +68,7 @@ class AssistantActivity : Activity() {
         val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         head.addView(tv("‹", 28f, white).apply { setPadding(dp(2), 0, dp(14), dp(4)); setOnClickListener { finish() } })
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titles.addView(tv("ALFA", 20f, white, font = "sans-serif-medium").apply { letterSpacing = 0.12f })
+        titles.addView(tv("NoCap", 20f, white, font = "sans-serif-medium").apply { letterSpacing = 0.12f })
         status = tv("", 10f, dim, mono = true).apply { letterSpacing = 0.12f }
         titles.addView(status)
         head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
@@ -101,7 +101,7 @@ class AssistantActivity : Activity() {
             setPadding(dp(18), dp(5), dp(6), dp(5))
         }
         input = EditText(this).apply {
-            hint = "Message ALFA"
+            hint = "Message NoCap"
             setHintTextColor(Color.argb(100, 255, 255, 255))
             setTextColor(white)
             background = null
@@ -228,7 +228,7 @@ class AssistantActivity : Activity() {
             }, lpc(18))
         } else {
             box.addView(tv("How can I help?", 22f, white, font = "sans-serif-light"), lpc(10))
-            box.addView(tv("Ask me to open apps, change ALFA, or run IT checks.", 13f, dim), lpc(4))
+            box.addView(tv("Ask me to open apps, change NoCap, or run IT checks.", 13f, dim), lpc(4))
             val ideas = listOf(
                 "Open WhatsApp", "Set a 10 minute timer", "Make a Wi-Fi QR code",
                 "Is google.com's SSL OK?", "How's my battery and storage?", "Use the Aurora wallpaper",
@@ -306,7 +306,7 @@ class AssistantActivity : Activity() {
 
     /**
      * An action needed contacts to find someone: ask for the permission (or, if Android no longer
-     * shows the prompt, open ALFA's permission page), then the user can repeat the request.
+     * shows the prompt, open NoCap's permission page), then the user can repeat the request.
      */
     private fun askContactsIfNeeded() {
         if (!AssistantTools.needsContacts) return
@@ -327,7 +327,7 @@ class AssistantActivity : Activity() {
                 val w = smsWaiting
                 smsWaiting = null
                 if (ok && w != null) doSendSms(w.first, w.second)
-                else if (!ok) toast("ALFA needs the SMS permission to send texts — or use Open in Messages")
+                else if (!ok) toast("NoCap needs the SMS permission to send texts — or use Open in Messages")
             }
         }
     }
@@ -336,7 +336,7 @@ class AssistantActivity : Activity() {
     private fun startVoice() {
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask ALFA…")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask NoCap…")
         try { startActivityForResult(i, REQ_VOICE) } catch (e: Exception) { toast("No speech recognition on this phone") }
     }
 
@@ -443,7 +443,7 @@ class AssistantActivity : Activity() {
         val btns = LinearLayout(this)
         btns.addView(pill("Save PNG", true) {
             val uri = try { QrUtil.save(this, qr.bitmap, qr.name) } catch (e: Exception) { null }
-            toast(if (uri != null) "Saved to Pictures/ALFA" else "Open IT Tools → QR generator to save on this Android version")
+            toast(if (uri != null) "Saved to Pictures/NoCap" else "Open IT Tools → QR generator to save on this Android version")
         })
         btns.addView(pill("Share", false) {
             val uri = try { QrUtil.save(this, qr.bitmap, qr.name) } catch (e: Exception) { null }
@@ -544,7 +544,7 @@ class AssistantActivity : Activity() {
             setColor(Color.argb(40, Color.red(accent), Color.green(accent), Color.blue(accent)))
             setStroke(dp(1), Color.argb(90, Color.red(accent), Color.green(accent), Color.blue(accent)))
         }
-        contentDescription = "Speak to ALFA"
+        contentDescription = "Speak to NoCap"
         layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) }
         setOnClickListener { onClick() }
     }

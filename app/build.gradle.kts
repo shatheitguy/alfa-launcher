@@ -13,8 +13,8 @@ android {
         applicationId = "com.alfa.launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "49").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.49"
     }
 
     signingConfigs {
@@ -64,4 +64,12 @@ android {
 dependencies {
     // QR code encoding (pure Java, no Android deps)
     implementation("com.google.zxing:core:3.5.3")
+    // NoCap Cloud: pairing QR scanner (camera permission is asked for only when you tap Scan QR)
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
+    // NoCap Cloud: device token + pinned cert in Keystore-backed encrypted prefs
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // NoCap Cloud: 15-minute heartbeat
+    implementation("androidx.work:work-runtime:2.9.1")
+    // NoCap Cloud: open server apps in a Custom Tab
+    implementation("androidx.browser:browser:1.8.0")
 }

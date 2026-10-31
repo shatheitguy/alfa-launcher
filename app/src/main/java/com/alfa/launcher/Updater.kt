@@ -47,7 +47,7 @@ object Updater {
         c.connectTimeout = 8000
         c.readTimeout = 8000
         c.setRequestProperty("Accept", "application/vnd.github+json")
-        c.setRequestProperty("User-Agent", "ALFA-Launcher")
+        c.setRequestProperty("User-Agent", "NoCap-OS")
         try {
             val code = c.responseCode
             if (code == 403 || code == 429) {
@@ -89,7 +89,7 @@ object Updater {
         c.instanceFollowRedirects = false
         c.connectTimeout = 8000
         c.readTimeout = 8000
-        c.setRequestProperty("User-Agent", "ALFA-Launcher")
+        c.setRequestProperty("User-Agent", "NoCap-OS")
         return try {
             val tag = c.getHeaderField("Location")?.substringAfterLast("/tag/", "").orEmpty()
             if (tag.isEmpty()) null
@@ -109,8 +109,8 @@ object Updater {
     }
 
     // ---- in-app download via the system DownloadManager ----
-    // ALFA downloads the APK itself; the install is started from the system download
-    // (notification / Downloads app), so ALFA needs no "install other apps" permission.
+    // NoCap downloads the APK itself; the install is started from the system download
+    // (notification / Downloads app), so NoCap needs no "install other apps" permission.
 
     enum class DlState { RUNNING, DONE, FAILED }
     data class DlProgress(val state: DlState, val done: Long, val total: Long, val reason: String = "")
@@ -119,9 +119,9 @@ object Updater {
 
     fun enqueue(ctx: Context, rel: Release): Long {
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return -1L
-        val name = "alfa-launcher-${rel.tag}.apk"
+        val name = "nocap-os-${rel.tag}.apk"
         val req = DownloadManager.Request(Uri.parse(rel.apkUrl))
-            .setTitle("ALFA Launcher ${rel.tag}")
+            .setTitle("NoCap OS ${rel.tag}")
             .setDescription("Tap to install the update")
             .setMimeType(APK_MIME)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
@@ -154,12 +154,12 @@ object Updater {
         return DlProgress(DlState.FAILED, 0, 0, "query failed")
     }
 
-    // ---- self-install via PackageInstaller (needs "Install unknown apps" allowed for ALFA) ----
+    // ---- self-install via PackageInstaller (needs "Install unknown apps" allowed for NoCap) ----
 
     fun canSelfInstall(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < 26 || ctx.packageManager.canRequestPackageInstalls()
 
-    /** Opens the system screen where the user allows ALFA to install apps. */
+    /** Opens the system screen where the user allows NoCap to install apps. */
     fun requestInstallPermission(ctx: Context) {
         ctx.startActivity(
             Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
@@ -187,7 +187,7 @@ object Updater {
         try {
             dm.openDownloadedFile(downloadId).use { pfd ->
                 java.io.FileInputStream(pfd.fileDescriptor).use { input ->
-                    session.openWrite("alfa-update.apk", 0, pfd.statSize).use { out ->
+                    session.openWrite("nocap-update.apk", 0, pfd.statSize).use { out ->
                         input.copyTo(out, 64 * 1024)
                         session.fsync(out)
                     }

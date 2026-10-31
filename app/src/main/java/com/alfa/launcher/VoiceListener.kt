@@ -11,9 +11,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
 /**
- * Speech for ALFA Assistant.
+ * Speech for NoCap Assistant.
  *  - [startHotword] keeps listening (on-device recognizer when the phone has one) for the word
- *    "ALFA" and calls [Callbacks.onWake]; anything said after it in the same breath is passed on.
+ *    "NoCap" and calls [Callbacks.onWake]; anything said after it in the same breath is passed on.
  *  - [listenCommand] captures one command with live partial text.
  * Must be used from the main thread.
  */
@@ -64,7 +64,7 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
     }
 
     companion object {
-        private val WAKE = Regex("\\b(hey |ok |okay )?(alfa|alpha|alpa|alfah|elfa|alva)\\b[,.!?\\s]*", RegexOption.IGNORE_CASE)
+        private val WAKE = Regex("\\b(hey |ok |okay )?(no ?cap|know cap|no cup|alfa|alpha)\\b[,.!?\\s]*", RegexOption.IGNORE_CASE)
 
         fun available(ctx: Context) = SpeechRecognizer.isRecognitionAvailable(ctx)
     }
@@ -177,7 +177,7 @@ class VoiceListener(private val ctx: Context, private val cb: Callbacks) {
                     if (hit == null) { main.postDelayed(restart, 40); return }
                     if (!woke) { woke = true; cb.onWake() }
                     if (hit.length >= 2) { mode = Mode.COMMAND; cb.onCommand(hit) }
-                    else listenCommand(fresh = true)   // just "ALFA" -> listen for the command straight away
+                    else listenCommand(fresh = true)   // just "NoCap" -> listen for the command straight away
                 }
                 Mode.COMMAND -> {
                     val t = all.firstOrNull()?.trim().orEmpty()
