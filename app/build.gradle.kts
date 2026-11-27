@@ -51,7 +51,7 @@ android {
         // the bundled llama-server must be extracted to nativeLibraryDir so it can be executed
         jniLibs { useLegacyPackaging = true }
         resources {
-            // duplicate metadata from the Provider SDK's Jackson / OkHttp dependencies
+            // duplicate metadata from Jackson / OkHttp dependencies
             excludes += setOf(
                 "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*",
                 "META-INF/*.kotlin_module", "META-INF/versions/**", "META-INF/INDEX.LIST",
