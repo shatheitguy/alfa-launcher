@@ -34,7 +34,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * ALFA OS Settings: every launcher option in one organised place.
+ * NoCap OS Settings: every launcher option in one organised place.
  * Changes are saved to prefs immediately; the home screen re-applies them on resume.
  */
 open class SettingsActivity : Activity() {
@@ -145,8 +145,9 @@ open class SettingsActivity : Activity() {
             header("Models", "ON-DEVICE AI  \u00B7  RUNS OFFLINE ON THIS PHONE")
             modelsPage()
         } else {
-            header("ALFA OS", "SYSTEM SETTINGS  \u00B7  v${Updater.currentName(this)}")
+            header("NoCap OS", "SYSTEM SETTINGS  \u00B7  v${Updater.currentName(this)}")
             profileSection()
+            cloudSection()
             appearanceSection()
             motionSection()
             homeSection()
@@ -271,7 +272,7 @@ open class SettingsActivity : Activity() {
 
         // background
         val wall = prefs.getBoolean("wallpaper", false)
-        choiceRow(card, "Wallpaper", listOf("ALFA wallpaper" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
+        choiceRow(card, "Wallpaper", listOf("NoCap wallpaper" to "carbon", "My wallpaper" to "wall"), if (wall) "wall" else "carbon") {
             if (it == "carbon") {
                 prefs.edit().putBoolean("wallpaper", false).apply()
                 applyCarbonWallpaper(accent)
@@ -291,10 +292,10 @@ open class SettingsActivity : Activity() {
                 "One wallpaper for home, Recents and app switching, in your accent colour",
                 if (applied) null else "Apply") { applyCarbonWallpaper(accent) }
             line(card)
-            toggleRow(card, "Also on lock screen", "Use the ALFA wallpaper on the lock screen too", "wall_lock", false)
+            toggleRow(card, "Also on lock screen", "Use the NoCap wallpaper on the lock screen too", "wall_lock", false)
         } else {
             line(card)
-            actionRow(card, "Change wallpaper", "Pick a system wallpaper — ALFA shows the same one", null) {
+            actionRow(card, "Change wallpaper", "Pick a system wallpaper — NoCap shows the same one", null) {
                 startSafe(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
             }
         }
@@ -418,7 +419,7 @@ open class SettingsActivity : Activity() {
                 }
                 setOnLongClickListener {
                     android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_Material_Dialog_Alert)
-                        .setMessage("Remove this photo from ALFA?")
+                        .setMessage("Remove this photo from NoCap?")
                         .setPositiveButton("Remove") { _, _ ->
                             WallpaperSync.deletePhoto(this@SettingsActivity, name)
                             thumbs.remove(id)
@@ -469,7 +470,7 @@ open class SettingsActivity : Activity() {
         try { startActivityForResult(i, REQ_PHOTOS) } catch (e: Exception) { toast("No image picker available") }
     }
 
-    /** Renders ALFA carbon in [color] and sets it as the real system wallpaper. */
+    /** Renders NoCap carbon in [color] and sets it as the real system wallpaper. */
     private fun applyCarbonWallpaper(color: Int) {
         toast("Setting wallpaper…")
         val lock = prefs.getBoolean("wall_lock", false)
@@ -515,9 +516,9 @@ open class SettingsActivity : Activity() {
         }
     }
 
-    /** ALFA Assistant: the user's own local AI server (OpenAI-compatible) + voice options. */
+    /** NoCap Assistant: the user's own local AI server (OpenAI-compatible) + voice options. */
     private fun assistantSection() {
-        val card = section("ALFA ASSISTANT", "\u2726")
+        val card = section("NOCAP ASSISTANT", "\u2726")
         val engine = prefs.getString("ai_engine", "builtin") ?: "builtin"
         choiceRow(card, "AI engine", listOf("On this phone" to "builtin", "Local server" to "server"), engine) {
             prefs.edit().putString("ai_engine", it).apply(); build()
@@ -530,7 +531,7 @@ open class SettingsActivity : Activity() {
                 when {
                     !LocalLlm.supported(this) -> "Not available on this phone (needs 64-bit ARM)"
                     sel != null -> "${sel.removeSuffix(".gguf")} in use \u00B7 $count downloaded" + (if (LocalLlm.isRunning()) " \u00B7 running" else "")
-                    else -> "Download a model to run ALFA Assistant offline"
+                    else -> "Download a model to run NoCap Assistant offline"
                 },
                 if (sel == null && LocalLlm.supported(this)) "Get one" else null) {
                 startActivity(Intent(this, ModelsActivity::class.java))
@@ -561,7 +562,7 @@ open class SettingsActivity : Activity() {
             actionRow(card, "Test connection", "Checks the server and lists its models", null) { testServer() }
         }
         line(card)
-        toggleRow(card, "Memory", "ALFA remembers facts you ask it to (“remember that …”) in every chat", "ai_memory_on", true)
+        toggleRow(card, "Memory", "NoCap remembers facts you ask it to (“remember that …”) in every chat", "ai_memory_on", true)
         line(card)
         val facts = AssistantMemory.items(this)
         actionRow(card, "Edit memory", if (facts.isEmpty()) "Nothing saved yet" else "${facts.size} saved · one fact per line", null) {
@@ -574,9 +575,9 @@ open class SettingsActivity : Activity() {
         line(perms)
         permRow(perms, "SMS", "Send a text after you tap Send in the chat", android.Manifest.permission.SEND_SMS, REQ_SMS)
         line(perms)
-        permRow(perms, "Microphone", "Voice chat and the “ALFA” wake word", android.Manifest.permission.RECORD_AUDIO, REQ_MIC)
+        permRow(perms, "Microphone", "Voice chat and the “NoCap” wake word", android.Manifest.permission.RECORD_AUDIO, REQ_MIC)
         line(card)
-        toggleRow(card, "Wake word \u201CALFA\u201D", "Say \u201CALFA\u201D while the home screen is showing. Uses the microphone on-device while on.",
+        toggleRow(card, "Wake word \u201CNoCap\u201D", "Say \u201CNoCap\u201D while the home screen is showing. Uses the microphone on-device while on.",
             "wake_word", false) { on ->
             if (on && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 @Suppress("DEPRECATION")
@@ -584,9 +585,9 @@ open class SettingsActivity : Activity() {
             }
         }
         line(card)
-        toggleRow(card, "Speak replies", "ALFA reads its answers aloud in voice mode", "ai_speak", true)
+        toggleRow(card, "Speak replies", "NoCap reads its answers aloud in voice mode", "ai_speak", true)
         line(card)
-        actionRow(card, "Open ALFA Assistant", "Tap \u2726 on the home screen to type, long-press it to talk", null) {
+        actionRow(card, "Open NoCap Assistant", "Tap \u2726 on the home screen to type, long-press it to talk", null) {
             startActivity(Intent(this, AssistantActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
@@ -610,7 +611,7 @@ open class SettingsActivity : Activity() {
         actionRow(eng, if (running) "Running" else "Stopped",
             if (running) "${LocalLlm.runningModel?.removeSuffix(".gguf")} \u00B7 ${LocalLlm.runningContext / 1024}K context \u00B7 " +
                 "stays loaded ${LocalLlm.keepLabel(LocalLlm.keepMinutes(this))}" + (if (LocalLlm.keepMinutes(this) >= 0) " after last use" else "")
-            else "Starts by itself when you ask ALFA something", if (running) "Stop" else if (sel != null) "Start" else null) {
+            else "Starts by itself when you ask NoCap something", if (running) "Stop" else if (sel != null) "Start" else null) {
             if (running) { LocalLlm.stop(); build() }
             else if (sel != null) {
                 toast("Loading model\u2026")
@@ -728,7 +729,7 @@ open class SettingsActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_MIC && grantResults.none { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
             prefs.edit().putBoolean("wake_word", false).apply()
-            toast("ALFA needs microphone access to hear \u201CALFA\u201D")
+            toast("NoCap needs microphone access to hear \u201CNoCap\u201D")
         }
         build() // refresh the permission rows
     }
@@ -795,7 +796,7 @@ open class SettingsActivity : Activity() {
         }
         val box = FrameLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(field) }
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("ALFA memory")
+            .setTitle("NoCap memory")
             .setView(box)
             .setPositiveButton("Save") { _, _ -> AssistantMemory.setItems(this, field.text.toString().lines()); build() }
             .setNeutralButton("Clear all") { _, _ -> AssistantMemory.setItems(this, emptyList()); build() }
@@ -833,16 +834,62 @@ open class SettingsActivity : Activity() {
         toggleRow(card, "Auto-check", "Look for new versions every 12 hours", "auto_update", true)
     }
 
-    /** About: ALFA OS (opens the ALFA Launcher website) and the source code. */
+    /** About: app version, the NoCapOS server project, and this app's source. */
     private fun aboutSection() {
         val card = section("ABOUT", "ℹ")
-        actionRow(card, "ALFA OS", "Version ${Updater.currentName(this)}  ·  build ${Updater.currentCode(this)}  ·  open website", null) {
-            startSafe(Intent(Intent.ACTION_VIEW, Uri.parse("https://shatheitguy.github.io/alfa-launcher/")))
+        actionRow(card, "NoCap OS", "Version ${Updater.currentName(this)}  ·  build ${Updater.currentCode(this)}", null, showChevron = false) {}
+        line(card)
+        actionRow(card, "NoCapOS server", "github.com/shatheitguy/nocapos  ·  run your own cloud", null) {
+            startSafe(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shatheitguy/nocapos")))
         }
         line(card)
         actionRow(card, "Source & releases", "github.com/${Updater.REPO}", null) {
             startSafe(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/${Updater.REPO}")))
         }
+    }
+
+    /** NoCap Cloud: the linked NoCap server, or a way to link one. */
+    private fun cloudSection() {
+        val card = section("NOCAP CLOUD", "☁")
+        val link = NoCapLink.get(this)
+        if (link == null) {
+            actionRow(card, "Link your NoCap server", "Scan the QR or type the code from Settings → Devices on your server", "Link") {
+                startActivity(Intent(this, PairActivity::class.java))
+            }
+        } else {
+            val id = if (link.nocapId.isNotEmpty()) "${link.nocapId}  ·  " else ""
+            actionRow(card, link.serverName.ifEmpty { "NoCap server" }, "$id${link.server}", null) {
+                startSafe(Intent(Intent.ACTION_VIEW, Uri.parse(link.server)))
+            }
+            line(card)
+            val user = if (link.username.isNotEmpty()) "@${link.username}" else "Linked"
+            val ver = if (link.version.isNotEmpty()) "  ·  NoCapOS ${link.version}" else ""
+            actionRow(card, "Signed in as", "$user$ver", null, showChevron = false) {}
+            line(card)
+            actionRow(card, "Pinned certificate", NoCapApi.shortFingerprint(link.fingerprint) + "  ·  only this cert is trusted",
+                null, showChevron = false) {}
+            line(card)
+            actionRow(card, "Link a different server", "Replaces the current link", null) {
+                startActivity(Intent(this, PairActivity::class.java))
+            }
+            line(card)
+            actionRow(card, "Unlink", "Forget this server on this phone", null) {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Unlink ${link.serverName.ifEmpty { "this server" }}?")
+                    .setMessage("This phone forgets the server and its token. You can relink anytime. " +
+                        "To fully revoke it, remove the phone in Settings → Devices on the server too.")
+                    .setPositiveButton("Unlink") { _, _ ->
+                        io.execute {
+                            NoCapLink.clear(this)
+                            main.post { if (!isDestroyed) { toast("Unlinked. Catch you later"); build() } }
+                        }
+                    }
+                    .setNegativeButton("Keep it", null)
+                    .show()
+            }
+        }
+        line(card)
+        toggleRow(card, "Show on home screen", "Server status and your server's apps above the orbit", "show_cloud", true)
     }
 
     private fun openUpdates() {
@@ -854,7 +901,7 @@ open class SettingsActivity : Activity() {
     private fun systemSection() {
         val card = section("SYSTEM", "⚙")
         val isDefault = isDefaultLauncher()
-        actionRow(card, "Default home app", if (isDefault) "ALFA is your home screen ✓" else "ALFA is not the default yet",
+        actionRow(card, "Default home app", if (isDefault) "NoCap is your home screen ✓" else "NoCap is not the default yet",
             if (isDefault) null else "Set") { requestDefault() }
         line(card)
         actionRow(card, "IT Tools", "Network, ping, ports, subnet, device info…", null) {

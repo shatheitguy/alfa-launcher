@@ -14,7 +14,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * ALFA's voice orb. A glowing core with ripple rings and a living wave ring that react to the
+ * NoCap's voice orb. A glowing core with ripple rings and a living wave ring that react to the
  * microphone level, orbiting arcs that speed up while thinking, and a soft pulse while speaking.
  */
 class VoiceOrbView(context: Context) : View(context) {

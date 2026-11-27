@@ -27,8 +27,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * ALFA wallpapers, tinted with the accent colour: fluid glass, 3D depth, matte minimal,
- * or the user's own photos. Shown behind ALFA screens and rendered as the system wallpaper.
+ * NoCap wallpapers, tinted with the accent colour: fluid glass, 3D depth, matte minimal,
+ * or the user's own photos. Shown behind NoCap screens and rendered as the system wallpaper.
  * Everything is drawn once into a bitmap (software canvas, so blur filters work).
  */
 class HudBackground(context: Context, attrs: AttributeSet?) : View(context, attrs) {

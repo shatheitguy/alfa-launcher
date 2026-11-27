@@ -36,7 +36,7 @@ class ToolSpec(
 )
 
 /**
- * Everything ALFA Assistant can do. It acts only through these launcher / Android actions,
+ * Everything NoCap Assistant can do. It acts only through these launcher / Android actions,
  * never by driving other apps' screens. Results are short plain-text summaries the model
  * reads back.
  */
@@ -137,7 +137,7 @@ object AssistantTools {
                 val m = apps(c).filter { q.isEmpty() || it.label.lowercase(Locale.ROOT).contains(q) }
                 if (m.isEmpty()) "No matching apps." else m.take(if (q.isEmpty()) 40 else 20).joinToString(", ") { it.label }
             },
-            ToolSpec("set_accent", "Change ALFA's accent colour (icons, rings, wallpaper).",
+            ToolSpec("set_accent", "Change NoCap's accent colour (icons, rings, wallpaper).",
                 props("color" to str("Accent colour", accentNames())), listOf("color")) { c, a ->
                 val name = a.getString("color").lowercase(Locale.ROOT)
                 val hex = MainActivity.ACCENTS.firstOrNull { it.first.lowercase(Locale.ROOT) == name }?.second
@@ -149,7 +149,7 @@ object AssistantTools {
                 }
                 "Accent set to $name."
             },
-            ToolSpec("set_wallpaper", "Set one of ALFA's wallpaper styles as the system wallpaper, in the accent colour.",
+            ToolSpec("set_wallpaper", "Set one of NoCap's wallpaper styles as the system wallpaper, in the accent colour.",
                 props("style" to str("Wallpaper style", HudBackground.STYLES.map { it.first })), listOf("style")) { c, a ->
                 val s = a.getString("style").lowercase(Locale.ROOT)
                 if (HudBackground.STYLES.none { it.first == s }) return@ToolSpec "Unknown style. Options: ${HudBackground.STYLES.joinToString { it.first }}"
@@ -164,7 +164,7 @@ object AssistantTools {
                 if (IconStyler.STYLES.none { it.first == s }) return@ToolSpec "Unknown style."
                 prefs(c).edit().putString("icon_style", s).apply(); "Icon style set to $s."
             },
-            ToolSpec("set_setting", "Turn an ALFA setting on or off.",
+            ToolSpec("set_setting", "Turn an NoCap setting on or off.",
                 props("setting" to str("Setting", settingKeys.keys.toList()), "on" to bool("true = on, false = off")),
                 listOf("setting", "on")) { c, a ->
                 val k = settingKeys[a.getString("setting")] ?: return@ToolSpec "Unknown setting."
@@ -190,7 +190,7 @@ object AssistantTools {
                 saveList(c, place, l)
                 "${if (a.getString("action") == "add") "Added" else "Removed"} ${app.label} ${if (a.getString("action") == "add") "to" else "from"} the $place."
             },
-            ToolSpec("open_it_tool", "Open one of ALFA's IT Tools screens (speed test, QR generator, port check, etc.).",
+            ToolSpec("open_it_tool", "Open one of NoCap's IT Tools screens (speed test, QR generator, port check, etc.).",
                 props("tool" to str("Tool", itTools)), listOf("tool")) { c, a ->
                 val t = a.getString("tool")
                 if (t !in itTools) return@ToolSpec "Unknown tool."
@@ -201,8 +201,8 @@ object AssistantTools {
                 val act = panels[a.getString("panel")] ?: return@ToolSpec "Unknown panel."
                 "Opening ${a.getString("panel")}: " + start(c, Intent(act))
             },
-            ToolSpec("open_alfa_settings", "Open ALFA OS Settings.", props(), emptyList()) { c, _ ->
-                start(c, Intent(c, SettingsActivity::class.java)); "Opened ALFA OS Settings."
+            ToolSpec("open_alfa_settings", "Open NoCap OS Settings.", props(), emptyList()) { c, _ ->
+                start(c, Intent(c, SettingsActivity::class.java)); "Opened NoCap OS Settings."
             },
             ToolSpec("set_timer", "Start a countdown timer in the clock app.",
                 props("minutes" to int("Length in minutes"), "seconds" to int("Extra seconds, usually 0"), "label" to str("Optional label")),
@@ -210,7 +210,7 @@ object AssistantTools {
                 val secs = a.optInt("minutes") * 60 + a.optInt("seconds")
                 if (secs <= 0) return@ToolSpec "Timer length must be more than 0."
                 start(c, Intent(AlarmClock.ACTION_SET_TIMER).putExtra(AlarmClock.EXTRA_LENGTH, secs)
-                    .putExtra(AlarmClock.EXTRA_MESSAGE, a.optString("label", "ALFA timer")).putExtra(AlarmClock.EXTRA_SKIP_UI, true))
+                    .putExtra(AlarmClock.EXTRA_MESSAGE, a.optString("label", "NoCap timer")).putExtra(AlarmClock.EXTRA_SKIP_UI, true))
                 "Timer set for ${secs / 60} min ${secs % 60} s."
             },
             ToolSpec("set_alarm", "Set an alarm in the clock app (24-hour time).",
@@ -218,7 +218,7 @@ object AssistantTools {
                 val h = a.getInt("hour"); val m = a.getInt("minute")
                 if (h !in 0..23 || m !in 0..59) return@ToolSpec "Invalid time."
                 start(c, Intent(AlarmClock.ACTION_SET_ALARM).putExtra(AlarmClock.EXTRA_HOUR, h).putExtra(AlarmClock.EXTRA_MINUTES, m)
-                    .putExtra(AlarmClock.EXTRA_MESSAGE, a.optString("label", "ALFA alarm")).putExtra(AlarmClock.EXTRA_SKIP_UI, true))
+                    .putExtra(AlarmClock.EXTRA_MESSAGE, a.optString("label", "NoCap alarm")).putExtra(AlarmClock.EXTRA_SKIP_UI, true))
                 String.format(Locale.US, "Alarm set for %02d:%02d.", h, m)
             },
             ToolSpec("web_search", "Search the web in the browser.", props("query" to str("Search terms")), listOf("query")) { c, a ->
@@ -244,7 +244,7 @@ object AssistantTools {
                 props("host" to str("Domain, e.g. example.com")), listOf("host")) { _, a ->
                 ssl(a.getString("host"))
             },
-            ToolSpec("wake_device", "Send Wake-on-LAN to a device saved in ALFA's Wake-on-LAN tool.",
+            ToolSpec("wake_device", "Send Wake-on-LAN to a device saved in NoCap's Wake-on-LAN tool.",
                 props("name" to str("Saved device name")), listOf("name")) { c, a ->
                 wake(c, a.getString("name"))
             },
@@ -253,7 +253,7 @@ object AssistantTools {
                 props("fact" to str("The fact, in the user's words, e.g. 'my home server is 192.168.0.170'")), listOf("fact")) { c, a ->
                 val fact = a.getString("fact")
                 if (!said(fact)) return@ToolSpec "ASK:What should I remember?"
-                if (!AssistantMemory.enabled(c)) return@ToolSpec "Memory is turned off in ALFA OS Settings → ALFA Assistant."
+                if (!AssistantMemory.enabled(c)) return@ToolSpec "Memory is turned off in NoCap OS Settings → NoCap Assistant."
                 if (AssistantMemory.add(c, fact)) "Remembered: $fact" else "Nothing to remember."
             },
         ) + appActions
@@ -449,7 +449,7 @@ object AssistantTools {
         "edit_home" to listOf("orbit", "dock", "home screen", "pin", "unpin"),
         "open_it_tool" to listOf("tool", "speed", "speedtest", "port", "subnet", "hash", "base64", "password", "wake-on-lan", "wifi details", "wi-fi details", "update", "device info", "panels"),
         "open_settings_panel" to listOf("setting", "wifi", "wi-fi", "bluetooth", "display", "brightness", "battery saver", "storage", "developer", "location", "vpn", "sound", "about phone", "mobile data", "apps list"),
-        "open_alfa_settings" to listOf("alfa setting", "launcher setting", "alfa os setting"),
+        "open_alfa_settings" to listOf("nocap setting", "no cap setting", "alfa setting", "launcher setting", "alfa os setting"),
         "set_timer" to listOf("timer", "countdown", "count down"),
         "set_alarm" to listOf("alarm", "wake me"),
         "web_search" to listOf("search", "google", "look up", "lookup online", "find online"),

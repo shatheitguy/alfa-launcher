@@ -11,7 +11,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * ALFA Assistant's brain: talks to the user's own local AI server through the
+ * NoCap Assistant's brain: talks to the user's own local AI server through the
  * OpenAI-compatible chat API (Ollama, LM Studio, llama.cpp server, vLLM, LocalAI, ...)
  * and runs [AssistantTools] when the model asks for them. Call [send] from a background thread.
  */
@@ -40,7 +40,7 @@ class AssistantEngine(private val ctx: Context) {
     val contextSize: Int get() =
         if (engine == "builtin") LocalLlm.contextSize(ctx) else prefs.getInt("ai_server_ctx", 8192)
 
-    /** "builtin" = ALFA's on-device llama-server, "server" = the user's own server on the network. */
+    /** "builtin" = NoCap's on-device llama-server, "server" = the user's own server on the network. */
     val engine: String get() = prefs.getString("ai_engine", "builtin") ?: "builtin"
 
     fun configured(): Boolean =
@@ -81,8 +81,8 @@ class AssistantEngine(private val ctx: Context) {
     private fun systemPrompt(): String {
         val name = Profile.name(ctx).ifEmpty { "the user" }
         return """
-            You are ALFA, the assistant built into the ALFA launcher on $name's Android phone (${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}).
-            You help by acting through your tools: opening apps, changing ALFA's look and settings, setting timers and alarms, opening system settings, and running quick IT checks (ping, DNS, SSL, network, device status, Wake-on-LAN). $name is an IT professional, so technical answers are welcome.
+            You are NoCap, the assistant built into NoCap OS on $name's Android phone (${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}).
+            You help by acting through your tools: opening apps, changing NoCap's look and settings, setting timers and alarms, opening system settings, and running quick IT checks (ping, DNS, SSL, network, device status, Wake-on-LAN). $name is an IT professional, so technical answers are welcome.
             When a request maps to a tool, call the tool rather than describing how to do it. Only call a tool that clearly matches what was asked; never substitute an unrelated one. If the user is chatting or asking a question, just answer it yourself in conversation. Never invent details the user did not give (names, numbers, Wi-Fi names, passwords, links, message text): ask for them instead; only search the web when they explicitly ask you to search. Do several steps in one go when asked. If no tool can do what was asked, say so plainly in one sentence and suggest the closest option.
             Reply briefly, one to three short sentences, in plain text without markdown, because replies are shown in a small panel and read aloud. After acting, confirm what you did.
         """.trimIndent().let { base ->
@@ -228,7 +228,7 @@ class AssistantEngine(private val ctx: Context) {
                 }
                 val hint = when {
                     isContextError(code, txt) ->
-                        " (the message is too long for this model's context window; start a new chat or pick a larger context in ALFA OS Settings)"
+                        " (the message is too long for this model's context window; start a new chat or pick a larger context in NoCap OS Settings)"
                     txt.contains("does not support tools", true) || txt.contains("tool", true) && code == 400 ->
                         " (this model may not support tool calling; try llama3.1, qwen2.5 or mistral-nemo)"
                     else -> ""
